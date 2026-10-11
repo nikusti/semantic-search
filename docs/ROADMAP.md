@@ -1,13 +1,13 @@
 # Roadmap
 
-## Next: Store installation
+## In review: Store installation
 
 - Keep one engine and UI codebase, with bundled ZIP and small Store packages.
-- Native companion installer and small Store source package are implemented for the 0.5.0 preview. Python and required libraries are included; no developer toolchain or terminal steps for users.
-- Offline isolated installation, repeated installation, Store engine discovery and synthetic search pass. Complete final host/update tests and clean-account validation before submission.
-- Complete signing/notarization, Store metadata, screenshots and independent privacy/license review before public distribution.
+- Version 0.5.0 includes the native companion installer and small Store source package. Python and required libraries are included; no developer toolchain or terminal steps for users.
+- Installation/update recovery, Store discovery, launcher UI, synthetic search, build/lint and screenshot checks passed. Independent privacy/license reviews were completed before publication. A factory-clean Mac or separate-account test remains additional validation.
+- [Raycast Store PR #32190](https://github.com/raycast/extensions/pull/32190) is submitted and awaiting review. Handle feedback in that PR. The companion is currently unsigned; Developer ID signing/notarization is a future installation improvement.
 
-## After Store packaging
+## Next development
 
 ### Apple Photos and iCloud library
 
@@ -17,4 +17,4 @@ Investigate a local importer using the authorized Photos library, including clou
 
 Design an optional schedule or watcher that updates new, changed and deleted files using the existing incremental scanner. Respect exclusions, cancellation, power/battery limits and model unloading. Keep manual Update Search Index available. Decide between a lightweight macOS mechanism and an agent only after measuring the requirements.
 
-These two features are queued, not implemented. Revisit them with the user when the Store installation stage is complete.
+These two features are queued, not implemented. They can be developed while Store review is pending. Keep changes separate from the submitted version until tested and ready for a new release.
