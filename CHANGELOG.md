@@ -2,6 +2,14 @@
 
 The complete published version history is kept here. Earlier installation archives are retired from this repository; use the latest release. Dates are in UTC.
 
+## Unreleased
+
+- Add an optional Apple Photos source with explicit macOS permission and optional iCloud downloads.
+- Index temporary image representations locally; retain vectors and small thumbnails, with a bounded preview cache.
+- Reuse unchanged Photos entries and remove unavailable entries only after a completed library pass. Preserve folder indexes and completed work on cancellation.
+- Connect the library, track import progress, and open matched assets in Photos from the launcher.
+- Keep text search responsive during cloud preview requests and repair thumbnails without re-encoding images.
+
 ## [0.5.1] - 2026-10-11
 
 - Handle malformed custom service URLs with a repair message instead of crashing setup.

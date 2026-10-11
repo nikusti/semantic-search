@@ -34,6 +34,8 @@ class SettingsRequest(BaseModel):
     idle_seconds: Literal[60,300] = 60
     excluded_paths: list[str] | None = Field(default=None, max_length=100)
     roots: list[str] | None = Field(default=None, max_length=100)
+    enable_photos_library: bool | None = None
+    photos_allow_network: bool | None = None
 
 
 class SegmentRequest(BaseModel):
@@ -169,6 +171,18 @@ def create_app(config, engine=None, request_stop=None):
         except ValueError as error: raise HTTPException(422,str(error)) from error
         except RuntimeError as error: raise HTTPException(409,str(error)) from error
 
+    @app.post('/v1/photos/connect')
+    def connect_photos():
+        from .photos import PhotoLibrary
+        try:
+            with PhotoLibrary() as library:
+                result = library.request('authorize')
+                if result['authorization'] in {'authorized', 'limited'}:
+                    result.update(library.request('count'))
+                return result
+        except RuntimeError as error:
+            raise HTTPException(503, str(error)) from error
+
     @app.post('/v1/models/inspect')
     def inspect_model(body: ModelSourceRequest):
         try:
@@ -226,6 +240,18 @@ def create_app(config, engine=None, request_stop=None):
     @app.post("/v1/preview")
     def preview(body: PreviewRequest):
         try:
+            if body.path.startswith('photos://asset/'):
+                with operation_lock:
+                    store = app.state.store
+                    # Reserve its lifetime while settings can replace the store.
+                    if not store.preview_lock.acquire(blocking=False):
+                        return store.photos_thumbnail(body.path)
+                try:
+                    # The preview lock is reentrant for this wrapper. Network
+                    # requests must not hold the model/search operation lock.
+                    return store.preview(body.path, animate=body.animate)
+                finally:
+                    store.preview_lock.release()
             with operation_lock: return app.state.store.preview(body.path, animate=body.animate, start_seconds=body.start_seconds)
         except (ValueError, FileNotFoundError):
             raise HTTPException(404, "Preview unavailable") from None

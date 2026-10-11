@@ -70,6 +70,9 @@ def main():
     subprocess.run(['swiftc','-O','-parse-as-library','-module-cache-path',str(build/'coreml-module-cache'),
                     '-file-prefix-map',str(ROOT)+'=/source','-o',str(native/'semantic-search-coreml'),*map(str,sources)],check=True)
     shutil.copytree(ROOT/'native/coreml',runtime/'COREML_SOURCES',dirs_exist_ok=True)
+    from build_photos import build as build_photos
+    build_photos(runtime/'photos')
+    shutil.copytree(ROOT/'native/photos',runtime/'PHOTOS_SOURCES',dirs_exist_ok=True)
     clean_metadata(python)
     shutil.rmtree(runtime/'CODEC_NOTICES',ignore_errors=True)
     shutil.copytree(ROOT/'packaging/codec-notices',runtime/'CODEC_NOTICES')

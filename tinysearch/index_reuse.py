@@ -4,6 +4,7 @@ from pathlib import Path
 import re
 import sqlite3
 from .engine import engine_identity
+from . import photos
 
 def text_identity(identity):
     return identity.split(':media-v1:')[0].replace(':text-only', '')
@@ -27,7 +28,13 @@ def reuse_saved(config, target):
             prior = row[0]
             for file in old.execute('SELECT * FROM files').fetchall():
                 filename, kind = file['path'], file['kind']
-                if config.is_excluded(filename) or file['root'] not in {str(root) for root in config.roots}: continue
+                is_photo = file['root'] == photos.ROOT
+                if is_photo:
+                    if not config.enable_photos_library: continue
+                    if not old.execute("SELECT 1 FROM sqlite_master WHERE name='photos_assets'").fetchone(): continue
+                    photo = old.execute('SELECT * FROM photos_assets WHERE path=?', (filename,)).fetchone()
+                    if not photo: continue
+                elif config.is_excluded(filename) or file['root'] not in {str(root) for root in config.roots}: continue
                 if not {'document':config.enable_documents, 'image':config.enable_images, 'video':config.enable_video or config.enable_audio, 'audio':config.enable_audio}.get(kind): continue
                 if target.execute('SELECT 1 FROM files WHERE path=?', (filename,)).fetchone(): continue
                 if kind in {'video', 'audio'}:
@@ -40,6 +47,8 @@ def reuse_saved(config, target):
                 if not chunks or any(len(c['vector']) != config.dimensions * 4 for c in chunks): continue
                 with target:
                     target.execute('INSERT INTO files VALUES (?,?,?,?,?,?)', tuple(file))
+                    if is_photo:
+                        target.execute('INSERT INTO photos_assets VALUES (?,?,?,?)', tuple(photo))
                     target.executemany('INSERT INTO chunks (path,position,snippet,vector,start_seconds,end_seconds,modality) VALUES (?,?,?,?,?,?,?)', [(filename,*tuple(c)) for c in chunks])
                     for table, columns in [('thumbnails',2),('media_files',3)]:
                         cached = old.execute(f'SELECT * FROM {table} WHERE path=?', (filename,)).fetchone()

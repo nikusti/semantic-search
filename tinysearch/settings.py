@@ -31,6 +31,9 @@ def validated_exclusions(exclusions):
 
 def configured(config, values):
     values = dict(values)
+    for key in ('enable_photos_library', 'photos_allow_network'):
+        if values.get(key) is None:
+            values.pop(key, None)
     roots = values.pop('roots', None)
     if roots is not None:
         selected = []
@@ -61,6 +64,8 @@ def configured(config, values):
         values['chunk_tokens'] = min(values['chunk_tokens'], 480)
         values['audio_segment_seconds'] = min(values['audio_segment_seconds'], 10)
     capabilities = entry.get('capabilities', {'images':True, 'video':True, 'audio':True})
+    if values.get('enable_photos_library', config.enable_photos_library) and not values.get('enable_images', config.enable_images):
+        raise ValueError('Enable Photographs and images to index Apple Photos')
     for flag, capability in [('enable_images','images'),('enable_video','video'),('enable_audio','audio')]:
         if values.get(flag) and not capabilities[capability]:
             raise ValueError(f'This model does not support {capability}; turn off that content type')
@@ -115,7 +120,7 @@ class Settings:
             path=self.storage/entry['path']
             models.append({**entry,'installed':downloaded(entry,self.storage),'disk_bytes':sum(p.stat().st_size for p in path.rglob('*') if p.is_file()) if path.exists() else 0})
         import shutil
-        current = {key:getattr(config,key) for key in ('model_variant','dimensions','enable_documents','enable_images','enable_video','enable_audio','video_segment_seconds','audio_segment_seconds','thumbnail_px','chunk_tokens','idle_seconds')}
+        current = {key:getattr(config,key) for key in ('model_variant','dimensions','enable_documents','enable_images','enable_video','enable_audio','video_segment_seconds','audio_segment_seconds','thumbnail_px','chunk_tokens','idle_seconds','enable_photos_library','photos_allow_network')}
         current['excluded_paths'] = [str(p) for p in config.excluded_paths]
         current['roots'] = [str(p) for p in config.roots]
         current['model_url'] = config.model_url
@@ -150,7 +155,7 @@ class Settings:
             return self.update_exclusions(values['excluded_paths'])
         if not any(values.get(key,False) for key in ('enable_documents','enable_images','enable_video','enable_audio')): raise ValueError('Select at least one content type')
         config=configured(self.app.state.store.config,values)
-        if not config.roots:
+        if not config.roots and not config.enable_photos_library:
             raise ValueError('Choose at least one folder to index')
         if config.enable_video or config.enable_audio:
             from .media import decoder_available
@@ -251,7 +256,7 @@ class Settings:
             return dict(self.job)
 
     def start_index(self):
-        if not self.app.state.store.config.roots:
+        if not self.app.state.store.config.roots and not self.app.state.store.config.enable_photos_library:
             raise ValueError("Choose folders in Model Settings before updating the index")
         with self.job_lock:
             if self.job['state'] in {'downloading','applying','indexing','cancelling'} or getattr(self.app.state,'manual_index',False) or self.app.state.store.index_lock.locked():
@@ -308,7 +313,18 @@ class Settings:
             if prior != config.thumbnail_px:
                 from .extract import thumbnail
                 for row in candidate_store.db.execute("SELECT path FROM files WHERE kind='image'").fetchall():
-                    jpeg=thumbnail(Path(row[0]),config.thumbnail_px,config.thumbnail_quality)
+                    if row[0].startswith('photos://asset/'):
+                        from io import BytesIO
+                        from PIL import Image
+                        saved = candidate_store.db.execute('SELECT jpeg FROM thumbnails WHERE path=?', (row[0],)).fetchone()
+                        if not saved:
+                            continue  # Repaired by the next Photos pass without re-encoding.
+                        image = Image.open(BytesIO(saved[0])).convert('RGB')
+                        image.thumbnail((config.thumbnail_px, config.thumbnail_px))
+                        output = BytesIO(); image.save(output, format='JPEG', quality=config.thumbnail_quality)
+                        jpeg = output.getvalue()
+                    else:
+                        jpeg=thumbnail(Path(row[0]),config.thumbnail_px,config.thumbnail_quality)
                     candidate_store.db.execute('INSERT OR REPLACE INTO thumbnails VALUES (?,?)',(row[0],jpeg))
                 candidate_store.db.commit()
             candidate_store.db.execute("INSERT OR REPLACE INTO meta VALUES ('thumbnail_px',?)",(str(config.thumbnail_px),))

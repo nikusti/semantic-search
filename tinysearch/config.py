@@ -41,6 +41,8 @@ class Config:
     model_url: str = ''
     storage_path: Path | None = None
     pipeline_revision: str = ''
+    enable_photos_library: bool = False
+    photos_allow_network: bool = False
 
     def __post_init__(self):
         object.__setattr__(self, 'excluded_paths', tuple(sorted({
@@ -83,6 +85,8 @@ class Config:
                    storage_path=resolve(storage_path) if storage_path else None, **values)
 
     def is_excluded(self, path):
+        if str(path).startswith('photos://asset/'):
+            return False
         if not self.excluded_paths:
             return False
         path = Path(path).expanduser().absolute()

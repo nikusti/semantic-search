@@ -9,12 +9,12 @@
 
 ## Next development
 
-### Apple Photos and iCloud library
+### Apple Photos and iCloud library — in development
 
-Investigate a local importer using the authorized Photos library, including cloud-only assets, temporary downloads, progress/cancellation and disk-space limits. Prefer building and searching the index on the Mac. If local indexing is impractical, evaluate indexing on a user-controlled server with search from the Mac. Do not upload a library or introduce remote processing without an explicit decision.
+The local PhotoKit importer is being implemented and tested: explicit library permission, an optional iCloud-download setting, temporary 1024-pixel images, persistent vectors/small thumbnails, bounded preview caching, progress/cancellation, and incremental updates. Folder indexes remain intact. Check actual-library import/search, cloud-only requests and installation before shipping. Keep all processing on the Mac; do not introduce remote processing without an explicit decision.
 
 ### Automatic incremental indexing
 
 Design an optional schedule or watcher that updates new, changed and deleted files using the existing incremental scanner. Respect exclusions, cancellation, power/battery limits and model unloading. Keep manual Update Search Index available. Decide between a lightweight macOS mechanism and an agent only after measuring the requirements.
 
-These two features are queued, not implemented. They can be developed while Store review is pending. Keep changes separate from the submitted version until tested and ready for a new release.
+Automatic indexing remains queued. Photos development can continue while Store review is pending. Keep changes separate from the submitted version until tested and ready for a new release.

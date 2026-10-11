@@ -19,6 +19,8 @@ import ModelSettings from "./model-settings";
 import { createPreviewFiles } from "./preview-files";
 
 type Result = {
+  source?: "file" | "photos";
+  open_target?: string;
   path: string;
   name: string;
   kind: "image" | "document" | "video" | "audio";
@@ -42,6 +44,7 @@ type Status = {
   files: number;
   indexing: boolean;
   roots: string[];
+  photos_library?: { enabled: boolean; indexed: number };
   runtime?: { state: string };
   progress?: { processed: number; total: number };
 };
@@ -164,9 +167,11 @@ export default function SemanticSearch(
   }, [baseURL, libraryOpen]);
 
   const scope =
-    status?.roots
-      .map((root) => root.split("/").filter(Boolean).pop())
-      .join(", ") || "Local Files";
+    [
+      ...(status?.roots.map((root) => root.split("/").filter(Boolean).pop()) ||
+        []),
+      ...(status?.photos_library?.enabled ? ["Apple Photos"] : []),
+    ].join(", ") || "Local Files";
   const progress =
     status?.indexing && status.progress
       ? `Indexing ${scope}: ${status.progress.processed} / ${status.progress.total}`
@@ -474,7 +479,11 @@ export default function SemanticSearch(
             key={result.path}
             id={result.path}
             title={result.name}
-            subtitle={result.path.slice(0, result.path.lastIndexOf("/"))}
+            subtitle={
+              result.source === "photos"
+                ? "Apple Photos"
+                : result.path.slice(0, result.path.lastIndexOf("/"))
+            }
             icon={
               result.kind === "image" || result.kind === "video"
                 ? {
@@ -504,7 +513,11 @@ export default function SemanticSearch(
                       />
                       <List.Item.Detail.Metadata.Label
                         title="Location"
-                        text={result.path}
+                        text={
+                          result.source === "photos"
+                            ? "Apple Photos Library"
+                            : result.path
+                        }
                       />
                       <List.Item.Detail.Metadata.Label
                         title="Matched by"
@@ -525,7 +538,12 @@ export default function SemanticSearch(
             }
             actions={
               <ActionPanel>
-                <Action.Open title="Open File" target={result.path} />
+                <Action.Open
+                  title={
+                    result.source === "photos" ? "Open in Photos" : "Open File"
+                  }
+                  target={result.open_target || result.path}
+                />
                 {(result.kind === "video" || result.kind === "audio") && (
                   <Action
                     title="Open Matched Segment"
@@ -534,10 +552,16 @@ export default function SemanticSearch(
                     shortcut={{ modifiers: ["cmd"], key: "return" }}
                   />
                 )}
-                <Action.ShowInFinder path={result.path} />
+                {result.source !== "photos" && (
+                  <Action.ShowInFinder path={result.path} />
+                )}
                 <Action.CopyToClipboard
-                  title="Copy Path"
-                  content={result.path}
+                  title={
+                    result.source === "photos"
+                      ? "Copy Photos Link"
+                      : "Copy Path"
+                  }
+                  content={result.open_target || result.path}
                 />
                 {(result.kind === "image" || result.kind === "video") && (
                   <Action
@@ -574,7 +598,7 @@ export default function SemanticSearch(
             ? "Search Needs Attention"
             : !baseURL
               ? "Setting Up Semantic Search"
-              : status?.roots.length === 0
+              : status?.roots.length === 0 && !status.photos_library?.enabled
                 ? "Choose Your Folders"
                 : loading
                   ? "Searching…"
@@ -587,7 +611,7 @@ export default function SemanticSearch(
             ? error
             : !baseURL
               ? setupMessage
-              : status?.roots.length === 0
+              : status?.roots.length === 0 && !status.photos_library?.enabled
                 ? "Open Model Settings, add folders and download the recommended model."
                 : status?.indexing
                   ? `${progress}. ${status.files} files are already searchable.`

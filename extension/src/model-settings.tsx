@@ -31,6 +31,8 @@ type Values = {
   enable_images: boolean;
   enable_video: boolean;
   enable_audio: boolean;
+  enable_photos_library: boolean;
+  photos_allow_network: boolean;
   video_segment_seconds: string;
   audio_segment_seconds: string;
   thumbnail_px: string;
@@ -57,6 +59,7 @@ type IndexStatus = {
     unchanged: number;
     deleted: number;
     errors: number;
+    deferred_photos?: number;
     finished_at?: number;
     cancelled?: boolean;
   };
@@ -65,6 +68,8 @@ type IndexStatus = {
   database_bytes?: number;
   indexing: boolean;
   progress?: {
+    source?: string;
+    download_fraction?: number;
     processed: number;
     total: number;
     errors: number;
@@ -120,6 +125,8 @@ export default function ModelSettings({
   const [applyingSettings, setApplyingSettings] = useState(false);
   const [exclusionText, setExclusionText] = useState("");
   const [exclusionError, setExclusionError] = useState("");
+  const [photosMessage, setPhotosMessage] = useState("");
+  const [connectingPhotos, setConnectingPhotos] = useState(false);
   const excludedPaths = values?.excluded_paths;
   useEffect(() => {
     if (!excludedPaths || exclusionError) return;
@@ -311,7 +318,7 @@ export default function ModelSettings({
       ? "Indexing — Cancel in Actions"
       : busy && exclusionsDirty
         ? "Save Excluded Folders"
-        : !values?.roots.length
+        : !values?.roots.length && !values?.enable_photos_library
           ? "Choose Folders First"
           : selectedModel?.installed
             ? dirty
@@ -338,6 +345,8 @@ export default function ModelSettings({
         lastScan.added && `${lastScan.added} new`,
         lastScan.updated && `${lastScan.updated} changed`,
         lastScan.deleted && `${lastScan.deleted} removed`,
+        lastScan.deferred_photos &&
+          `${lastScan.deferred_photos} iCloud photos deferred`,
       ]
         .filter(Boolean)
         .join(" · ") || "no changes"
@@ -369,6 +378,39 @@ export default function ModelSettings({
     setValues((previous) =>
       previous ? { ...previous, [key]: value } : previous,
     );
+  const connectPhotos = async () => {
+    if (connectingPhotos) return;
+    setConnectingPhotos(true);
+    setPhotosMessage("Waiting for macOS Photos access…");
+    try {
+      const response = await fetch(`${baseURL}/v1/photos/connect`, {
+        method: "POST",
+      });
+      const data = await response.json();
+      if (!response.ok)
+        throw new Error(data.detail || "Could not connect Photos");
+      if (!["authorized", "limited"].includes(data.authorization))
+        throw new Error(
+          "Allow Photos access in macOS Privacy & Security settings.",
+        );
+      setPhotosMessage(
+        `${Number(data.photos).toLocaleString()} photos available. Apply, then Update Search Index to import them.`,
+      );
+      await showToast({
+        style: Toast.Style.Success,
+        title: "Apple Photos connected",
+      });
+    } catch (e) {
+      setPhotosMessage(String(e));
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "Photos connection failed",
+        message: String(e),
+      });
+    } finally {
+      setConnectingPhotos(false);
+    }
+  };
   const downloadModel = async (variant = values?.model_variant) => {
     if (!variant || busy) return;
     try {
@@ -576,7 +618,7 @@ export default function ModelSettings({
       });
       return;
     }
-    if (!values.roots.length) {
+    if (!values.roots.length && !values.enable_photos_library) {
       await showToast({
         style: Toast.Style.Failure,
         title: "Choose folders first",
@@ -755,6 +797,15 @@ export default function ModelSettings({
             onAction={indexFiles}
             shortcut={Keyboard.Shortcut.Common.Refresh}
           />
+          <Action
+            title={
+              connectingPhotos
+                ? "Connecting Apple Photos…"
+                : "Connect Apple Photos"
+            }
+            icon={Icon.Image}
+            onAction={connectPhotos}
+          />
           {settings.storage_path && (
             <Action.Open
               title="Open Shared Storage Folder"
@@ -771,6 +822,12 @@ export default function ModelSettings({
       }
     >
       <Form.Description title="Search index" text={indexOverview} />
+      {indexStatus?.indexing && progress?.source === "photos" && (
+        <Form.Description
+          title="Apple Photos"
+          text={`Importing the Photos library${progress.download_fraction ? ` · iCloud download ${Math.round(progress.download_fraction * 100)}%` : ""}. Cancel in Actions to stop; completed photos are preserved.`}
+        />
+      )}
       {!!operationMessage && (
         <Form.Description title="Status" text={operationMessage} />
       )}
@@ -839,6 +896,33 @@ export default function ModelSettings({
         value={values.roots}
         onChange={(folders) => update("roots", folders)}
       />
+      <Form.Checkbox
+        id="enable_photos_library"
+        title="Apple Photos"
+        label="Search the Photos library"
+        value={values.enable_photos_library}
+        onChange={(enabled) => {
+          update("enable_photos_library", enabled);
+          if (enabled) update("enable_images", true);
+        }}
+      />
+      {values.enable_photos_library && (
+        <>
+          <Form.Checkbox
+            id="photos_allow_network"
+            label="Allow iCloud downloads for photos missing on this Mac"
+            value={values.photos_allow_network}
+            onChange={(enabled) => update("photos_allow_network", enabled)}
+          />
+          <Form.Description
+            title="Photos access"
+            text={
+              photosMessage ||
+              "Actions → Connect Apple Photos, then Apply and Update Search Index. Only vectors and small thumbnails are retained. Photos may download additional data into its own system cache."
+            }
+          />
+        </>
+      )}
       <Form.FilePicker
         id="excluded_folders"
         title="Add excluded folders"
