@@ -9,6 +9,9 @@ The complete published version history is kept here. Earlier installation archiv
 - Reuse unchanged Photos entries and remove unavailable entries only after a completed library pass. Preserve folder indexes and completed work on cancellation.
 - Connect the library, track import progress, and open matched assets in Photos from the launcher.
 - Keep text search responsive during cloud preview requests and repair thumbnails without re-encoding images.
+- Include Apple Photos videos and optional soundtracks using the shared MLX/Core ML media pipeline. Keep original assets intact, reuse unchanged entries, and show previews/open short clips at the matched timestamp.
+- Honor content switches for the Photos source and report deferred iCloud videos and per-kind vector storage.
+- Preserve phone-video orientation when encoding Photos scenes and preparing matched clips, without changing existing filesystem video vectors.
 
 ## [0.5.1] - 2026-10-11
 

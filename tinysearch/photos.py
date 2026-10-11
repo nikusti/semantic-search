@@ -60,7 +60,7 @@ class PhotoLibrary:
         raise RuntimeError('Photos operation timed out. Retry after allowing Photos access.')
 
     def request(self, op, timeout=180, **values):
-        for name in ('response.json', 'progress.json', 'cancel', 'image.jpg'):
+        for name in ('response.json', 'progress.json', 'cancel', 'image.jpg', 'video.mov'):
             (self.path/name).unlink(missing_ok=True)
         temporary = self.path/'request.tmp'
         temporary.write_text(json.dumps({'op': op, **values}))
@@ -74,6 +74,16 @@ class PhotoLibrary:
         result = self.request('image', timeout=timeout, id=identifier, network=network, edge=edge)
         self.image_name = result.get('name')
         self.image_modified = result.get('modified')
+        return None if result.get('deferred') else self.path/'image.jpg'
+
+    def video(self, identifier, network=False, max_bytes=1024**3, timeout=330):
+        result = self.request('video', timeout=timeout, id=identifier, network=network, max_bytes=max_bytes)
+        self.video_name = result.get('name')
+        self.video_modified = result.get('modified')
+        return None if result.get('deferred') else self.path/'video.mov'
+
+    def video_frame(self, identifier, seconds=0, network=False, timeout=10):
+        result = self.request('video_frame', timeout=timeout, id=identifier, network=network, seconds=seconds, edge=1024)
         return None if result.get('deferred') else self.path/'image.jpg'
 
     def close(self):

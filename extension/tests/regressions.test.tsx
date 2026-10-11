@@ -562,3 +562,70 @@ test("failed Apply keeps edits and polling resumes without accepting stale error
     });
   }
 });
+
+test("Photos-only video settings apply without a folder and show separate source storage", async (t) => {
+  launcher.serviceURL = "http://127.0.0.1:18799";
+  t.mock.method(globalThis, "setInterval", () => 1);
+  t.mock.method(globalThis, "clearInterval", () => {});
+  const photos = {
+    ...current,
+    roots: [],
+    enable_photos_library: true,
+    photos_allow_network: false,
+    enable_images: false,
+    enable_video: true,
+  };
+  let posted: Record<string, unknown> | undefined;
+  t.mock.method(
+    globalThis,
+    "fetch",
+    async (url: string, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        posted = JSON.parse(String(init.body));
+        return response({ state: "applying" });
+      }
+      return response(
+        url.endsWith("/v1/status")
+          ? {
+              ...status,
+              photos_library: {
+                by_kind: [
+                  { kind: "video", files: 2, vectors: 10, vector_bytes: 20480 },
+                ],
+              },
+            }
+          : snapshot(photos),
+      );
+    },
+  );
+  let view!: ReactTestRenderer;
+  try {
+    await act(async () => {
+      view = create(createElement(ModelSettings));
+    });
+    assert.equal(
+      field(view, "Checkbox", "enable_photos_library").props.value,
+      true,
+    );
+    const source = view.root.findAll(
+      (node) =>
+        node.type === "Description" && node.props.title === "Photos index",
+    );
+    assert.equal(source[0].props.text, "2 videos · 0.02 MB of vectors");
+    await act(async () => {
+      field(view, "Checkbox", "photos_allow_network").props.onChange(true);
+    });
+    await act(async () => {
+      await field(view, "SubmitForm").props.onSubmit();
+    });
+    assert.deepEqual(posted?.roots, []);
+    assert.equal(posted?.enable_photos_library, true);
+    assert.equal(posted?.enable_images, false);
+    assert.equal(posted?.enable_video, true);
+    assert.equal(posted?.photos_allow_network, true);
+  } finally {
+    await act(async () => {
+      view?.unmount();
+    });
+  }
+});

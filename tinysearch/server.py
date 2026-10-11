@@ -216,7 +216,18 @@ def create_app(config, engine=None, request_stop=None):
     @app.post("/v1/segment")
     def segment(body: SegmentRequest):
         try:
+            if body.path.startswith('photos://asset/'):
+                with operation_lock:
+                    store = app.state.store
+                    if not store.preview_lock.acquire(blocking=False):
+                        raise HTTPException(409, 'Another Photos preview is being prepared; retry shortly')
+                try:
+                    return store.segment(body.path, body.start_seconds, body.end_seconds)
+                finally:
+                    store.preview_lock.release()
             with operation_lock: return app.state.store.segment(body.path,body.start_seconds,body.end_seconds)
+        except HTTPException:
+            raise
         except (ValueError,FileNotFoundError):
             raise HTTPException(404,"Indexed segment unavailable") from None
         except Exception:
@@ -249,7 +260,7 @@ def create_app(config, engine=None, request_stop=None):
                 try:
                     # The preview lock is reentrant for this wrapper. Network
                     # requests must not hold the model/search operation lock.
-                    return store.preview(body.path, animate=body.animate)
+                    return store.preview(body.path, animate=body.animate, start_seconds=body.start_seconds)
                 finally:
                     store.preview_lock.release()
             with operation_lock: return app.state.store.preview(body.path, animate=body.animate, start_seconds=body.start_seconds)

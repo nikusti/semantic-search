@@ -162,7 +162,10 @@ class Store:
                     "excluded_paths": [str(p) for p in self.config.excluded_paths],
                     "photos_library": {"enabled": self.config.enable_photos_library,
                         "allow_network": self.config.photos_allow_network,
-                        "indexed": self.db.execute('SELECT count(*) FROM photos_assets').fetchone()[0]},
+                        "indexed": self.db.execute('SELECT count(*) FROM photos_assets').fetchone()[0],
+                        "by_kind": [dict(row) for row in self.db.execute('''SELECT f.kind, count(DISTINCT f.path) AS files,
+                            count(c.id) AS vectors, coalesce(sum(length(c.vector)),0) AS vector_bytes
+                            FROM photos_assets p JOIN files f ON f.path=p.path LEFT JOIN chunks c ON c.path=f.path GROUP BY f.kind''')]},
                     "runtime": self.engine.metrics() if hasattr(self.engine, "metrics") else {},
                     "indexing": self.index_lock.locked(),
                     "progress": dict(self.progress) if self.progress else None}
@@ -177,6 +180,8 @@ class Store:
 
     def segment(self, filename, start, end):
         """Open a bounded indexed match, never copy the entire original recording."""
+        if filename.startswith(photos.PREFIX):
+            return self._photos_segment(filename, start, end)
         path = Path(filename)
         with self.preview_lock:
             resolved = path.resolve()
@@ -216,6 +221,44 @@ class Store:
                     old.unlink()
             return {"path":str(output),"start_seconds":start,"end_seconds":end}
 
+    def _photos_segment(self, path, start, end):
+        with self.preview_lock:
+            with self.lock:
+                row = self.db.execute('''SELECT f.kind,f.mtime,f.size,p.asset_id FROM files f
+                    JOIN photos_assets p ON p.path=f.path JOIN chunks c ON c.path=f.path
+                    WHERE f.path=? AND c.start_seconds=? AND c.end_seconds=? LIMIT 1''', (path, start, end)).fetchone()
+            if not row or row['kind'] != 'video' or not self._photo_enabled('video') or not 0 < end-start <= 30:
+                raise ValueError('Requires an indexed Photos video segment of at most 30 seconds')
+            folder = self.config.database.parent/'segment-previews'
+            folder.mkdir(parents=True, exist_ok=True)
+            key = hashlib.sha256(f"{path}:{row['mtime']}:{row['size']}:{start}:{end}".encode()).hexdigest()
+            output = folder/(key+'.mp4')
+            if not output.exists():
+                temp = output.with_suffix('.partial.mp4')
+                try:
+                    with photos.PhotoLibrary() as library:
+                        source = library.video(row['asset_id'], network=self.config.photos_allow_network,
+                                               max_bytes=self.config.max_media_file_mb*1024**2)
+                        if source is None:
+                            raise ValueError('Video is in iCloud; allow downloads or open it in Photos')
+                        modified = getattr(library, 'video_modified', None)
+                        if modified is not None and int(modified*1e9) != row['mtime']:
+                            raise ValueError('Video changed since indexing; update the index')
+                        media.render_segment(source, temp, start, end, self.config, True, True)
+                    if temp.stat().st_size > 32*1024**2:
+                        raise ValueError('Segment preview exceeds cache limit')
+                    temp.replace(output)
+                finally:
+                    temp.unlink(missing_ok=True)
+            output.touch()
+            cached = sorted(folder.glob('*'), key=lambda p:p.stat().st_mtime)
+            total = sum(p.stat().st_size for p in cached if p.suffix in {'.mp4', '.wav'})
+            for old in cached:
+                if total <= 64*1024**2: break
+                if old != output and old.suffix in {'.mp4', '.wav'}:
+                    total -= old.stat().st_size; old.unlink()
+            return {'path': str(output), 'start_seconds': start, 'end_seconds': end}
+
     def _scan(self, root):
         errors, paths = [], []
         if self.config.is_excluded(root):
@@ -241,15 +284,17 @@ class Store:
         return {"document": self.config.enable_documents, "image": self.config.enable_images,
                 "video": self.config.enable_video or self.config.enable_audio, "audio": self.config.enable_audio}.get(file_kind, False)
 
-    def _media_chunks(self, path, info):
+    def _media_chunks(self, path, info, file_kind=None, identity_path=None, orient=False):
+        file_kind = file_kind or kind(path)
+        identity_path = identity_path or path
         if info.duration > self.config.max_media_seconds:
             raise ValueError(f"Media exceeds {self.config.max_media_seconds} seconds; skipped, not truncated")
-        if kind(path) == "video" and self.config.enable_video and not info.has_video:
+        if file_kind == "video" and self.config.enable_video and not info.has_video:
             raise ValueError("Video file has no video stream")
-        if kind(path) == "audio" and not info.has_audio:
+        if file_kind == "audio" and not info.has_audio:
             raise ValueError("Audio file has no audio stream")
         windows = []
-        if kind(path) == "video" and self.config.enable_video:
+        if file_kind == "video" and self.config.enable_video:
             windows.extend((start, end, "video") for start, end in media.segments(info.video_duration or info.duration, self.config.video_segment_seconds))
         if self.config.enable_audio and info.has_audio:
             windows.extend((start, end, "audio") for start, end in media.segments(info.audio_duration or info.duration, self.config.audio_segment_seconds, self.config.audio_overlap_seconds))
@@ -257,16 +302,16 @@ class Store:
         self.progress["current_chunks_total"] = len(windows)
         chunks, poster = [], None
         for start, end, modality in windows:
-            self._check_included(path)
+            self._check_included(identity_path)
             if modality == "video":
-                frames = media.video_frames(path, start, end, self.config)
+                frames = media.video_frames(path, start, end, self.config, orient)
                 vector = self.engine.video(frames)
                 if poster is None:
                     poster = media.jpeg(frames[len(frames)//2], self.config.thumbnail_px, self.config.thumbnail_quality)
             else:
                 samples = media.audio_samples(path, start, end, self.config)
                 vector = self.engine.audio(samples)
-            self._check_included(path)
+            self._check_included(identity_path)
             snippet = f"{'Video scene' if modality == 'video' else 'Audio'} · {media.timestamp(start)}–{media.timestamp(end)}"
             chunks.append((snippet, normalize(vector, self.engine.dimensions).astype("<f4").tobytes(), start, end, modality))
             self.progress["current_chunks_done"] += 1
@@ -391,7 +436,7 @@ class Store:
                         removed = [(r[0],) for r in old_paths if r[0] not in seen or self.config.is_excluded(r[0])]
                         self.db.executemany("DELETE FROM files WHERE path=?", removed)
                         summary["deleted"] += len(removed)
-            if self.config.enable_photos_library and self.config.enable_images:
+            if self.config.enable_photos_library and (self.config.enable_images or self._enabled('video')):
                 self._index_photos(summary)
             return summary
         except IndexCancelled:
@@ -416,28 +461,38 @@ class Store:
                     self.cancel_requested.clear()
                     self.index_lock.release()
 
+    def _photo_enabled(self, file_kind):
+        return self.config.enable_photos_library and self._enabled(file_kind)
+
     def _index_photos(self, summary):
-        """Append a library pass without walking caches or changing folder entries."""
+        """Read a complete inventory; decode only enabled, new or edited assets."""
         def progress(value):
             self.progress.update(value)
         try:
             with photos.PhotoLibrary(self.cancel_requested.is_set, progress) as library:
                 self.progress.update(source='photos', phase='scanning')
-                assets = library.assets()  # Prune only after a successful complete inventory.
+                inventory = library.assets()
+                seen = {photos.asset_path(asset['id']) for asset in inventory}
+                assets = [asset for asset in inventory if self._photo_enabled(asset.get('kind', 'image'))]
+                summary['library_photos'] = sum(asset.get('kind', 'image') == 'image' for asset in inventory)
+                summary['library_videos'] = sum(asset.get('kind') == 'video' for asset in inventory)
+                summary['library_video_seconds'] = sum(asset.get('duration', 0) for asset in inventory if asset.get('kind') == 'video')
                 self.progress['total'] += len(assets)
                 self.progress.update(phase='indexing', photos_total=len(assets))
-                seen = set()
                 for asset in assets:
                     self._check_cancelled()
                     path = photos.asset_path(asset['id'])
-                    seen.add(path)
+                    file_kind = asset.get('kind', 'image')
                     fingerprint = hashlib.sha256(json.dumps(asset, sort_keys=True).encode()).hexdigest()
+                    source = None
+                    self.progress.update(current_chunks_done=0, current_chunks_total=0, download_fraction=0)
                     try:
                         with self.lock:
                             old = self.db.execute('SELECT fingerprint FROM photos_assets WHERE path=?', (path,)).fetchone()
                             cached = self.db.execute('SELECT jpeg FROM thumbnails WHERE path=?', (path,)).fetchone()
-                            saved = self.db.execute('SELECT vector FROM chunks WHERE path=? AND position=0', (path,)).fetchone()
-                        reusable = bool(old and old[0] == fingerprint and saved)
+                            saved = self.db.execute('SELECT snippet,vector,start_seconds,end_seconds,modality FROM chunks WHERE path=? ORDER BY position', (path,)).fetchall()
+                            saved_info = self.db.execute('SELECT * FROM media_files WHERE path=?', (path,)).fetchone()
+                        reusable = bool(old and old[0] == fingerprint and saved and (file_kind != 'video' or saved_info))
                         if reusable and cached:
                             from io import BytesIO
                             from PIL import Image
@@ -446,42 +501,71 @@ class Store:
                             if edge >= min(self.config.thumbnail_px, max(asset['width'], asset['height'])):
                                 summary['unchanged'] += 1
                                 continue
-                        self.progress.update(download_fraction=0)
                         import shutil
                         if shutil.disk_usage(self.config.database.parent).free < 512 * 1024**2:
-                            raise PhotosImportPaused('Less than 512 MB free. Free disk space before importing more photos')
-                        image = library.image(asset['id'], network=self.config.photos_allow_network)
-                        if image is None:
-                            summary['deferred_photos'] = summary.get('deferred_photos', 0) + 1
+                            raise PhotosImportPaused('Less than 512 MB free. Free disk space before importing more Photos assets')
+                        info = None
+                        if file_kind == 'video' and not reusable:
+                            import math
+                            duration = asset.get('duration', 0)
+                            if not math.isfinite(duration) or duration <= 0 or duration > self.config.max_media_seconds:
+                                raise ValueError('Video exceeds the duration limit or has no usable duration; skipped, not truncated')
+                            source = library.video(asset['id'], network=self.config.photos_allow_network,
+                                                   max_bytes=self.config.max_media_file_mb * 1024**2)
+                            if source is not None:
+                                modified = getattr(library, 'video_modified', None)
+                                if modified is not None and modified != asset['modified']:
+                                    raise ValueError('Video changed during import; retry on the next pass')
+                                if source.stat().st_size > self.config.max_media_file_mb * 1024**2:
+                                    raise ValueError('Video exceeds the configured file size limit')
+                                info = media.probe(source, self.config)
+                                chunks, jpeg = self._media_chunks(source, info, file_kind='video', identity_path=path, orient=True)
+                                # Audio-only indexing still needs a visible video poster.
+                                if jpeg is None:
+                                    jpeg = media.jpeg(media.frame(source, 0, self.config, orient=True), self.config.thumbnail_px, self.config.thumbnail_quality)
+                                name = getattr(library, 'video_name', None)
+                        else:
+                            source = library.image(asset['id'], network=self.config.photos_allow_network)
+                            if source is not None:
+                                modified = getattr(library, 'image_modified', None)
+                                if modified is not None and modified != asset['modified']:
+                                    raise ValueError('Photo changed during import; retry on the next pass')
+                                vector = saved[0]['vector'] if reusable else normalize(self.engine.image(source), self.engine.dimensions).astype('<f4').tobytes()
+                                chunks = [tuple(row) for row in saved] if reusable else [('', vector, None, None, None)]
+                                jpeg = thumbnail(source, self.config.thumbnail_px, self.config.thumbnail_quality)
+                                name = getattr(library, 'image_name', None)
+                                if file_kind == 'video':
+                                    info = media.MediaInfo(saved_info['duration_seconds'], True, bool(saved_info['has_audio']))
+                        if source is None:
+                            key = 'deferred_videos' if file_kind == 'video' else 'deferred_photos'
+                            summary[key] = summary.get(key, 0) + 1
                             continue
-                        modified = getattr(library, 'image_modified', None)
-                        if modified is not None and modified != asset['modified']:
-                            raise ValueError('Photo changed during import; retry on the next pass')
-                        vector = saved[0] if reusable else normalize(self.engine.image(image), self.engine.dimensions).astype('<f4').tobytes()
-                        jpeg = thumbnail(image, self.config.thumbnail_px, self.config.thumbnail_quality)
                         self._check_cancelled()
                         with self.lock, self.db:
                             self.db.execute('DELETE FROM files WHERE path=?', (path,))
                             self.db.execute('INSERT INTO files VALUES (?,?,?,?,?,?)',
-                                            (path, photos.ROOT, 'image', int(asset['modified']*1e9), image.stat().st_size, fingerprint))
-                            self.db.execute('INSERT INTO chunks(path,position,snippet,vector) VALUES (?,?,?,?)', (path, 0, '', vector))
+                                            (path, photos.ROOT, file_kind, int(asset['modified']*1e9), source.stat().st_size, fingerprint))
+                            self.db.executemany('INSERT INTO chunks(path,position,snippet,vector,start_seconds,end_seconds,modality) VALUES (?,?,?,?,?,?,?)',
+                                                [(path, i, *chunk) for i, chunk in enumerate(chunks)])
                             self.db.execute('INSERT INTO thumbnails VALUES (?,?)', (path, jpeg))
-                            self.db.execute('INSERT INTO photos_assets VALUES (?,?,?,?)', (path, asset['id'], getattr(library, 'image_name', None) or asset['name'], fingerprint))
+                            self.db.execute('INSERT INTO photos_assets VALUES (?,?,?,?)', (path, asset['id'], name or asset['name'], fingerprint))
+                            if info:
+                                self.db.execute('INSERT INTO media_files VALUES (?,?,?)', (path, info.duration, int(info.has_audio)))
                         if reusable:
                             summary['unchanged'] += 1
                         else:
                             summary['indexed'] += 1
                             summary['updated' if old else 'added'] += 1
-                        image.unlink(missing_ok=True)
-                    except IndexCancelled:
-                        raise
-                    except PhotosImportPaused:
+                    except (IndexCancelled, PhotosImportPaused):
                         raise
                     except Exception as error:
                         self._check_cancelled()
-                        # Do not put private photo names or IDs into public-facing errors.
                         summary['errors'].append(f'Apple Photos: {error}')
                     finally:
+                        if source is not None:
+                            # May be a symlink to Apple's original; unlink only the
+                            # temporary name, never resolve or delete its target.
+                            source.unlink(missing_ok=True)
                         self.progress['processed'] += 1
                         self.progress['errors'] = len(summary['errors'])
                 self._check_cancelled()
@@ -496,24 +580,28 @@ class Store:
             summary['errors'].append(f'Apple Photos: {error}')
 
     def photos_thumbnail(self, path):
-        if not self.config.enable_photos_library or not self.config.enable_images:
-            raise ValueError('Apple Photos is disabled')
         with self.lock:
-            row = self.db.execute('SELECT t.jpeg FROM thumbnails t JOIN photos_assets p ON p.path=t.path WHERE p.path=?', (path,)).fetchone()
-        if not row:
+            row = self.db.execute('SELECT t.jpeg,f.kind FROM thumbnails t JOIN photos_assets p ON p.path=t.path JOIN files f ON f.path=t.path WHERE p.path=?', (path,)).fetchone()
+        if not row or not self._photo_enabled(row['kind']):
             raise ValueError('Photo is not indexed')
         return {'preview': 'data:image/jpeg;base64,' + base64.b64encode(row[0]).decode(), 'page': 0, 'pages': 0}
 
-    def _photos_preview(self, path):
-        if not self.config.enable_photos_library or not self.config.enable_images:
-            raise ValueError('Apple Photos is disabled')
+    def _photos_preview(self, path, start_seconds=0):
         with self.preview_lock:
             with self.lock:
-                asset = self.db.execute('SELECT * FROM photos_assets WHERE path=?', (path,)).fetchone()
-                cached = self.db.execute('SELECT jpeg FROM pdf_previews WHERE path=?', (path,)).fetchone()
+                asset = self.db.execute('SELECT p.*,f.kind FROM photos_assets p JOIN files f ON f.path=p.path WHERE p.path=?', (path,)).fetchone()
+                cached = self.db.execute('SELECT jpeg,size FROM pdf_previews WHERE path=?', (path,)).fetchone()
                 small = self.db.execute('SELECT jpeg FROM thumbnails WHERE path=?', (path,)).fetchone()
-            if not asset or not small:
+            if not asset or not small or not self._photo_enabled(asset['kind']):
                 raise ValueError('Photo is not indexed')
+            is_video = asset['kind'] == 'video'
+            if is_video:
+                with self.lock:
+                    match = self.db.execute('SELECT 1 FROM chunks WHERE path=? AND start_seconds=?', (path, start_seconds)).fetchone()
+                if not match:
+                    raise ValueError('Video preview requires an indexed segment')
+                if cached and cached['size'] != round(start_seconds*1000):
+                    cached = None
             if cached:
                 jpeg = cached[0]
                 with self.lock, self.db:
@@ -522,12 +610,13 @@ class Store:
                 jpeg = small[0]
                 try:
                     with photos.PhotoLibrary() as library:
-                        image = library.image(asset['asset_id'], network=self.config.photos_allow_network, timeout=10)
+                        image = (library.video_frame(asset['asset_id'], start_seconds, network=self.config.photos_allow_network, timeout=10)
+                                 if is_video else library.image(asset['asset_id'], network=self.config.photos_allow_network, timeout=10))
                         if image:
                             jpeg = image.read_bytes()
                             with self.lock, self.db:
                                 self.db.execute('INSERT OR REPLACE INTO pdf_previews VALUES (?,?,?,?,?,?)',
-                                                (path, 0, len(jpeg), jpeg, 0, time.time()))
+                                                (path, 0, round(start_seconds*1000) if is_video else len(jpeg), jpeg, 0, time.time()))
                                 total = self.db.execute('SELECT coalesce(sum(length(jpeg)),0) FROM pdf_previews').fetchone()[0]
                                 for row in self.db.execute('SELECT path,length(jpeg) AS bytes FROM pdf_previews ORDER BY used').fetchall():
                                     if total <= 32 * 1024**2: break
@@ -547,8 +636,8 @@ class Store:
                        LEFT JOIN media_files m ON m.path=f.path
                        LEFT JOIN photos_assets p ON p.path=f.path
                 WHERE (?='all' OR f.kind=?)
-                  AND (? OR p.asset_id IS NULL)
-            """, (file_kind, file_kind, self.config.enable_photos_library and self.config.enable_images)).fetchall()
+                  AND (p.asset_id IS NULL OR (? AND ((f.kind='image' AND ?) OR (f.kind='video' AND ?))))
+            """, (file_kind, file_kind, self.config.enable_photos_library, self.config.enable_images, self._enabled('video'))).fetchall()
         # Exact cosine scan is intentional for the prototype; no DB server required.
         best = {}
         if rows:
@@ -564,7 +653,7 @@ class Store:
                                   "start_seconds": row["start_seconds"], "end_seconds": row["end_seconds"],
                                   "matched_modality": row["modality"], "duration_seconds": row["duration_seconds"]}
         results = [r for r in sorted(best.values(), key=lambda r: -r["score"])
-                   if (r['source'] == 'photos' and self.config.enable_photos_library and self.config.enable_images)
+                   if (r['source'] == 'photos' and self._photo_enabled(r['kind']))
                    or (r['source'] == 'file' and not self.config.is_excluded(r['path']) and Path(r['path']).is_file())][:limit]
         # Decode thumbnails only for returned results, not the whole image library.
         with self.lock:
@@ -576,7 +665,7 @@ class Store:
 
     def preview(self, filename, animate=False, start_seconds=0):
         if filename.startswith(photos.PREFIX):
-            return self._photos_preview(filename)
+            return self._photos_preview(filename, start_seconds)
         path = Path(filename)
         with self.preview_lock:
             with self.lock:

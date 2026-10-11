@@ -64,8 +64,8 @@ def configured(config, values):
         values['chunk_tokens'] = min(values['chunk_tokens'], 480)
         values['audio_segment_seconds'] = min(values['audio_segment_seconds'], 10)
     capabilities = entry.get('capabilities', {'images':True, 'video':True, 'audio':True})
-    if values.get('enable_photos_library', config.enable_photos_library) and not values.get('enable_images', config.enable_images):
-        raise ValueError('Enable Photographs and images to index Apple Photos')
+    if values.get('enable_photos_library', config.enable_photos_library) and not any(values.get(key, getattr(config, key)) for key in ('enable_images','enable_video','enable_audio')):
+        raise ValueError('Enable Photographs and images, video or audio to index Apple Photos')
     for flag, capability in [('enable_images','images'),('enable_video','video'),('enable_audio','audio')]:
         if values.get(flag) and not capabilities[capability]:
             raise ValueError(f'This model does not support {capability}; turn off that content type')

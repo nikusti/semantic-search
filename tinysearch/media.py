@@ -70,9 +70,9 @@ def segments(duration, seconds, overlap=0):
         start += seconds - overlap
 
 
-def frame(path, seconds, config, size=1024):
+def frame(path, seconds, config, size=1024, orient=False):
     if config.ffmpeg == 'pyav':
-        with Image.open(BytesIO(bundled_decode('frame', path, seconds, size))) as image:
+        with Image.open(BytesIO(bundled_decode('frame', path, seconds, size, int(orient)))) as image:
             return image.convert('RGB')
     result = subprocess.run(
         [config.ffmpeg, "-nostdin", "-v", "error", "-protocol_whitelist", "file,pipe",
@@ -84,7 +84,7 @@ def frame(path, seconds, config, size=1024):
         return image.convert("RGB")
 
 
-def video_frames(path, start, end, config):
+def video_frames(path, start, end, config, orient=False):
     # Centres of equal subintervals avoid an initial black frame and seeking past EOF.
     times = start + (np.arange(config.video_frames) + .5) * (end - start) / config.video_frames
     frames = []
@@ -94,7 +94,7 @@ def video_frames(path, start, end, config):
         offsets = (0, .1, .25, .5, 1) if end - start < 1 else (0,)
         for index, offset in enumerate(offsets):
             try:
-                frames.append(frame(path, max(0, float(t) - offset), config, size=640))
+                frames.append(frame(path, max(0, float(t) - offset), config, size=640, orient=orient))
                 break
             except (subprocess.CalledProcessError, UnidentifiedImageError):
                 if index == len(offsets) - 1:
@@ -137,9 +137,9 @@ def timestamp(seconds):
     return f"{hours:02}:{minutes:02}:{seconds:02}" if hours else f"{minutes:02}:{seconds:02}"
 
 
-def render_segment(path, output, start, end, config, video):
+def render_segment(path, output, start, end, config, video, orient=False):
     if config.ffmpeg == 'pyav':
-        bundled_decode('segment', path, output, start, end, int(video), timeout=90)
+        bundled_decode('segment', path, output, start, end, int(video), int(orient), timeout=90)
         return
     args = [config.ffmpeg, "-nostdin", "-v", "error", "-y", "-protocol_whitelist", "file,pipe",
             "-ss", str(start), "-i", str(path), "-t", str(end - start)]

@@ -18,7 +18,7 @@ def build(destination):
         'CFBundlePackageType': 'APPL',
         'CFBundleVersion': '1', 'CFBundleShortVersionString': '1.0',
         'LSMinimumSystemVersion': '26.0', 'LSUIElement': True,
-        'NSPhotoLibraryUsageDescription': 'Search your photos locally by their visual content. Only small images are requested for indexing; your library is never modified.',
+        'NSPhotoLibraryUsageDescription': 'Search your photos and videos locally by their content. Your library is never modified. Cloud media is downloaded only when enabled in Semantic Search.',
     }))
     subprocess.run(['swiftc', '-O', '-module-cache-path', str(ROOT/'.build/photos-module-cache'),
                     '-file-prefix-map', str(ROOT)+'=/source', '-o', str(executable),

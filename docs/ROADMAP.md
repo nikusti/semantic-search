@@ -11,7 +11,7 @@
 
 ### Apple Photos and iCloud library — in development
 
-The local PhotoKit importer is being implemented and tested: explicit library permission, an optional iCloud-download setting, temporary 1024-pixel images, persistent vectors/small thumbnails, bounded preview caching, progress/cancellation, and incremental updates. Folder indexes remain intact. Check actual-library import/search, cloud-only requests and installation before shipping. Keep all processing on the Mac; do not introduce remote processing without an explicit decision.
+The local PhotoKit importer supports photographs and videos, with explicit library permission, optional iCloud downloads, shared scene/soundtrack indexing for MLX and Core ML, persistent vectors/small thumbnails, bounded previews, progress/cancellation, and incremental updates. A real 100-photo import/search check and synthetic photo/video/soundtrack flows with both models have passed, including previews, matched clips and text-only search after unloading. Phone-video rotation is covered by a real decoder/segment regression. Real-library video and installation checks remain part of development validation before shipping. Folder indexes remain intact. Keep all processing on the Mac; do not introduce remote processing without an explicit decision.
 
 ### Automatic incremental indexing
 

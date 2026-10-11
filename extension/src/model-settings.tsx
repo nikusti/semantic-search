@@ -60,12 +60,21 @@ type IndexStatus = {
     deleted: number;
     errors: number;
     deferred_photos?: number;
+    deferred_videos?: number;
     finished_at?: number;
     cancelled?: boolean;
   };
   files: number;
   chunks: number;
   database_bytes?: number;
+  photos_library?: {
+    by_kind?: {
+      kind: string;
+      files: number;
+      vectors: number;
+      vector_bytes: number;
+    }[];
+  };
   indexing: boolean;
   progress?: {
     source?: string;
@@ -347,6 +356,8 @@ export default function ModelSettings({
         lastScan.deleted && `${lastScan.deleted} removed`,
         lastScan.deferred_photos &&
           `${lastScan.deferred_photos} iCloud photos deferred`,
+        lastScan.deferred_videos &&
+          `${lastScan.deferred_videos} iCloud videos deferred`,
       ]
         .filter(Boolean)
         .join(" · ") || "no changes"
@@ -394,7 +405,7 @@ export default function ModelSettings({
           "Allow Photos access in macOS Privacy & Security settings.",
         );
       setPhotosMessage(
-        `${Number(data.photos).toLocaleString()} photos available. Apply, then Update Search Index to import them.`,
+        `${Number(data.photos).toLocaleString()} photos · ${Number(data.videos || 0).toLocaleString()} videos available. Apply, then Update Search Index to import enabled content.`,
       );
       await showToast({
         style: Toast.Style.Success,
@@ -825,7 +836,7 @@ export default function ModelSettings({
       {indexStatus?.indexing && progress?.source === "photos" && (
         <Form.Description
           title="Apple Photos"
-          text={`Importing the Photos library${progress.download_fraction ? ` · iCloud download ${Math.round(progress.download_fraction * 100)}%` : ""}. Cancel in Actions to stop; completed photos are preserved.`}
+          text={`Importing the Photos library${progress.download_fraction ? ` · iCloud download ${Math.round(progress.download_fraction * 100)}%` : ""}. Cancel in Actions to stop; completed photos and videos are preserved.`}
         />
       )}
       {!!operationMessage && (
@@ -896,33 +907,6 @@ export default function ModelSettings({
         value={values.roots}
         onChange={(folders) => update("roots", folders)}
       />
-      <Form.Checkbox
-        id="enable_photos_library"
-        title="Apple Photos"
-        label="Search the Photos library"
-        value={values.enable_photos_library}
-        onChange={(enabled) => {
-          update("enable_photos_library", enabled);
-          if (enabled) update("enable_images", true);
-        }}
-      />
-      {values.enable_photos_library && (
-        <>
-          <Form.Checkbox
-            id="photos_allow_network"
-            label="Allow iCloud downloads for photos missing on this Mac"
-            value={values.photos_allow_network}
-            onChange={(enabled) => update("photos_allow_network", enabled)}
-          />
-          <Form.Description
-            title="Photos access"
-            text={
-              photosMessage ||
-              "Actions → Connect Apple Photos, then Apply and Update Search Index. Only vectors and small thumbnails are retained. Photos may download additional data into its own system cache."
-            }
-          />
-        </>
-      )}
       <Form.FilePicker
         id="excluded_folders"
         title="Add excluded folders"
@@ -979,6 +963,44 @@ export default function ModelSettings({
         />
       )}
       <Form.Description text="Choose folders to add; edit paths to remove. Apply exclusions during indexing — other folders continue. Original files are preserved." />
+      <Form.Checkbox
+        id="enable_photos_library"
+        title="Apple Photos"
+        label="Search photos and videos in the Photos library"
+        value={values.enable_photos_library}
+        onChange={(enabled) => {
+          update("enable_photos_library", enabled);
+          if (enabled) update("enable_images", true);
+        }}
+      />
+      {values.enable_photos_library && (
+        <>
+          <Form.Checkbox
+            id="photos_allow_network"
+            label="Allow iCloud downloads for media missing on this Mac"
+            value={values.photos_allow_network}
+            onChange={(enabled) => update("photos_allow_network", enabled)}
+          />
+          <Form.Description
+            title="Photos access"
+            text={
+              photosMessage ||
+              "Connect Apple Photos in Actions, then Apply and Update Search Index. The content switches below also apply to Photos. Originals stay in Photos; iCloud videos may download in full into Apple's cache."
+            }
+          />
+          {indexStatus?.photos_library?.by_kind?.length ? (
+            <Form.Description
+              title="Photos index"
+              text={indexStatus.photos_library.by_kind
+                .map(
+                  (row) =>
+                    `${row.files.toLocaleString()} ${row.kind === "video" ? "videos" : "photos"} · ${(row.vector_bytes / 1e6).toFixed(2)} MB of vectors`,
+                )
+                .join("\n")}
+            />
+          ) : null}
+        </>
+      )}
       <Form.Checkbox
         id="enable_documents"
         title="Content to index"

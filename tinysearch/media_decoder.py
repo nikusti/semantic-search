@@ -40,7 +40,7 @@ def frame_time(frame, stream):
     return float(frame.pts * frame.time_base) - float((stream.start_time or 0) * stream.time_base)
 
 
-def picture(path, seconds, size):
+def picture(path, seconds, size, orient=False):
     with open_media(path) as source:
         stream = source.streams.video[0]
         seek(source, stream, seconds)
@@ -50,6 +50,8 @@ def picture(path, seconds, size):
             if frame.pts is not None and frame_time(frame, stream) + 1e-6 >= seconds: break
         if last is None: raise ValueError('No video frame available')
         image = last.to_image().convert('RGB')
+        if orient and last.rotation:
+            image = image.rotate(last.rotation, expand=True)
         image.thumbnail((size, size))
         output = BytesIO()
         image.save(output, 'JPEG', quality=88)
@@ -88,7 +90,7 @@ def audio(path, start, end):
     return output[:written]
 
 
-def segment(path, output, start, end, video):
+def segment(path, output, start, end, video, orient=False):
     import av
     import numpy as np
     if not video:
@@ -120,6 +122,13 @@ def segment(path, output, start, end, video):
             if seconds >= end: break
             position = round((seconds-start)*30)
             if position <= previous: continue
+            if orient and frame.rotation:
+                image = frame.to_image().rotate(frame.rotation, expand=True)
+                if previous == -1:
+                    scale = min(1, 1280/image.width, 720/image.height)
+                    encoder.width = max(2, int(image.width*scale)//2*2)
+                    encoder.height = max(2, int(image.height*scale)//2*2)
+                frame = av.VideoFrame.from_image(image)
             previous = position
             frame = frame.reformat(encoder.width, encoder.height, 'yuv420p')
             frame.pts, frame.time_base = position, Fraction(1,30)
@@ -155,10 +164,10 @@ def main():
     path = Path(name)
     if not path.is_file(): raise ValueError('Expected a readable local file')
     if operation == 'probe': sys.stdout.write(json.dumps(probe(path)))
-    elif operation == 'frame': sys.stdout.buffer.write(picture(path,float(values[0]),int(values[1])))
+    elif operation == 'frame': sys.stdout.buffer.write(picture(path,float(values[0]),int(values[1]),bool(int(values[2])) if len(values)>2 else False))
     elif operation == 'audio': sys.stdout.buffer.write(audio(path,float(values[0]),float(values[1])).tobytes())
     elif operation == 'pdf': sys.stdout.buffer.write(pdf(path))
-    elif operation == 'segment': segment(path,Path(values[0]),float(values[1]),float(values[2]),bool(int(values[3])))
+    elif operation == 'segment': segment(path,Path(values[0]),float(values[1]),float(values[2]),bool(int(values[3])),bool(int(values[4])) if len(values)>4 else False)
     else: raise ValueError('Unknown decoder operation')
 
 
