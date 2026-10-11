@@ -1,7 +1,7 @@
 <p align="center"><img src="extension/assets/icon.png" width="88" alt="Semantic Search icon"></p>
 <h1 align="center">Semantic Search</h1>
 <p align="center">Find local files by what you remember.<br>Documents, photos, video scenes and audio — on your Mac.</p>
-<p align="center"><a href="https://github.com/nikusti/semantic-search/releases/tag/v0.4.0">Download</a> · <a href="#installation">Install</a> · <a href="#models-and-storage">Models & storage</a> · <a href="docs/DEVELOPMENT.md">Develop</a></p>
+<p align="center"><a href="https://github.com/nikusti/semantic-search/releases/tag/v0.4.0">Download</a> · <a href="#installation">Install</a> · <a href="#models-and-storage">Models & storage</a> · <a href="CHANGELOG.md">Version history</a> · <a href="docs/DEVELOPMENT.md">Develop</a></p>
 
 Describe a file in natural language, preview the match, and open the original. Semantic Search runs locally and shares its engine, models and indexes between **Tinycast and Raycast**.
 
