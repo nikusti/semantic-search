@@ -37,7 +37,7 @@ Requires **Apple silicon and macOS 26+**. The [v0.5.0 release](https://github.co
 3. Open **Semantic Search Model Settings**, choose folders and content types, then **Download & Apply**.
 4. Open **Semantic Search** and describe a file. Files become searchable while indexing continues.
 
-See [Installation](docs/INSTALL.md) for host-specific details. There is no Raycast Store listing yet. The extension and standalone engine share one codebase; [console use](docs/DEVELOPMENT.md#console-use-without-a-launcher) is also available.
+See [Installation](docs/INSTALL.md) for host-specific details. The [Raycast Store submission](https://github.com/raycast/extensions/pull/32190) is awaiting review; there is no Store listing yet. The extension and standalone engine share one codebase; [console use](docs/DEVELOPMENT.md#console-use-without-a-launcher) is also available.
 
 ## Models
 
