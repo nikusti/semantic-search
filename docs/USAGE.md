@@ -65,7 +65,7 @@ Compatibility is checked before weight download; custom weights must load and en
 
 Updated built-in weights use separate model storage and indexes. Core ML also tracks the pinned vision, audio and preprocessing artifacts. Older indexes are kept; unchanged compatible settings reuse their existing vectors.
 
-To update the extension, install its newer package. Models and indexes stay in shared storage. If a previous engine is still running, restart the Mac and reopen search.
+To update the extension, install its newer package. Models and indexes stay in shared storage. Packaged engines from 0.5.0 onward stop safely for idle updates and restore the previous engine if startup fails. Cancel indexing or wait before updating. An older engine needs a one-time Mac restart before opening the new extension.
 
 ## Privacy and limits
 

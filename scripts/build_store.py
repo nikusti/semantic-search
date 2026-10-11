@@ -42,6 +42,8 @@ Apple silicon, macOS 26+, and the separately installed **Semantic Search Engine 
 
 1. Open Semantic Search and choose **Download Search Engine** if the engine is missing.
 2. Open the companion installer from the release page and click **Install**. Python and decoding libraries are included. No Homebrew or terminal setup.
+The 0.5.0 companion is unsigned; macOS may require explicit opening approval. See the [installation guide](https://github.com/nikusti/semantic-search/blob/main/docs/INSTALL.md).
+
 3. Return to Search and choose **Check Installation**.
 4. Choose **Manage Library** in Actions, download a model, select folders and apply. Model weights download from Hugging Face.
 
@@ -51,7 +53,7 @@ MLX 8-bit and Core ML are supported; each model keeps a separate index. Text que
 
 The engine listens only on loopback, rejects browser origins, and is accessible to other local processes. Apple Photos/iCloud-only imports and automatic updates are not yet available. Audio search matches sounds, not transcripts.
 
-Source, release notices and matching native dependency sources: [Semantic Search](https://github.com/nikusti/semantic-search). Store acceptance and companion distribution are pending; this is a review preparation package.
+Source, release notices and matching native dependency sources: [Semantic Search](https://github.com/nikusti/semantic-search). Store acceptance is pending; this is a review preparation package.
 ''')
     (output / 'CHANGELOG.md').write_text('# Semantic Search Changelog\n\n## [Initial Store Release] - {PR_MERGE_DATE}\n\n- Search local files with EmbeddingGemma 2 through a separately installed local engine.\n- Manage models, folders, exclusions and incremental indexing from Search.\n')
     forbidden = {'runtime.zip', 'node_modules', '.build'}

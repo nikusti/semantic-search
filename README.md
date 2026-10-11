@@ -14,9 +14,9 @@ Semantic Search finds documents, photos, video scenes and sounds by meaning. Des
 
 ## Install
 
-Requires **Apple silicon and macOS 26+**. The [v0.4.1 release](https://github.com/nikusti/semantic-search/releases/tag/v0.4.1) includes Python and the required libraries: no Homebrew, pip or terminal setup.
+Requires **Apple silicon and macOS 26+**. The [v0.5.0 release](https://github.com/nikusti/semantic-search/releases/tag/v0.5.0) includes Python and the required libraries: no Homebrew, pip or terminal setup.
 
-1. Download and extract **semantic-search-v0.4.1.zip**.
+1. Download and extract **semantic-search-v0.5.0.zip**.
 2. Add the extracted **Semantic Search** folder in Tinycast's extension settings, or use **Import Extension** in Raycast.
 3. Open **Semantic Search Model Settings**, choose folders and content types, then **Download & Apply**.
 4. Open **Semantic Search** and describe a file. Files become searchable while indexing continues.

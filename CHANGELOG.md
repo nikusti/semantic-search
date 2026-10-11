@@ -2,13 +2,15 @@
 
 The complete published version history is kept here. Earlier installation archives are retired from this repository; use the latest release. Dates are in UTC.
 
-## [0.5.0] - Unreleased
+## [0.5.0] - 2026-10-11
 
 - Add a native companion-engine installer and generate a small Store review package from the same extension source.
 - Guide missing-engine installation without terminal commands or background executable downloads.
 - Manage the library within Search, and safely stop idle packaged engines for updates while preserving models and indexes.
 - Clarify local vector search, models and privacy; record Photos/iCloud and automatic indexing in the roadmap.
-- Store publication, Developer ID signing and notarization remain pending. The installer is a local test build.
+- Keep Tinycast inline previews and use temporary local JPEGs in Raycast; avoid redundant Search renders during status polling.
+- Restore the previous engine after failed updates, including a replacement holding the service lock.
+- Provide an unsigned companion installer; Store publication and optional Developer ID signing/notarization remain pending.
 
 ## [0.4.1] - 2026-10-11
 

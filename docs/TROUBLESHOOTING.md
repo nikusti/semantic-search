@@ -12,7 +12,7 @@ In Model Settings, **Actions → Open Shared Storage Folder** opens local storag
 
 ## An older engine is running
 
-After installing a newer extension, restart the Mac and open Semantic Search again. The new engine starts automatically. This does not remove your models or indexes.
+Engines older than 0.5.0 need a one-time Mac restart after installing this release. Packaged engines from 0.5.0 onward stop safely before an idle update and attempt to restore the previous version if the new engine fails. If indexing is active, cancel it or wait, then reopen Search. Models and indexes are preserved.
 
 ## No files are searchable
 
@@ -39,3 +39,7 @@ Download the same model in Model Settings to reuse its saved index. Deleting mod
 Ordinary users should leave this preference blank. A value such as `http://127.0.0.1:8765` connects to a developer-managed service and bypasses automatic engine startup. Only local HTTP addresses are supported.
 
 For source installation, developer CLI commands and packaging instructions, see [Development](DEVELOPMENT.md).
+
+## macOS blocks the companion installer
+
+The optional 0.5.0 companion installer has no Apple Developer ID signature or notarization. Gatekeeper can reject normal opening of a downloaded copy. Follow [Apple's opening-app guidance](https://support.apple.com/en-us/102445) to explicitly approve a trusted download, or use the ready-to-use bundled extension ZIP. No global security setting needs to be disabled. This companion installer is not required for the bundled ZIP.

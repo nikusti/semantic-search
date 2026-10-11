@@ -21,7 +21,7 @@ The intended Store design keeps one engine and one extension codebase. The exist
 
 Both packages should use the same pinned engine release, model revisions, indexing pipeline, shared storage and local protocol. Packaging alone does not change retrieval quality, model memory use or search speed. Installation and update steps differ; startup and search still need verification in both hosts.
 
-Version 0.5.0 prepares a Store source package and a native companion installer. They are not yet published to the Store; the current installer is a local test build without Developer ID signing/notarization. A simple download of an executable from a maintainer-controlled server is not automatically acceptable under Raycast's rules. The engine installation method must satisfy the Store review while keeping setup free of terminal commands.
+Version 0.5.0 prepares a Store source package and a native companion installer. They are not yet published to the Store; the companion installer is distributed without Developer ID signing/notarization. A simple download of an executable from a maintainer-controlled server is not automatically acceptable under Raycast's rules. The engine installation method must satisfy the Store review while keeping setup free of terminal commands.
 
 ## Companion installation experience
 
@@ -33,7 +33,7 @@ The practical first Store release should use a companion-engine installer. Publi
 4. The installer verifies and installs the same pinned runtime used by the ZIP. Returning to the extension detects the installed engine and offers model download and folder selection.
 5. An existing compatible engine skips setup entirely. Installing the extension in the other launcher reuses the same model, settings and indexes.
 
-The Store extension must not silently download and execute our own runtime archive. The installer is an explicit companion installation. Its executable code should use Developer ID signing, hardened runtime and [Apple notarization](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution). Source archives, dependency notices and reproducible native build recipes remain available with each engine release. Signing and notarization require a maintainer's Apple Developer credentials; they are not prerequisites for end users.
+The Store extension must not silently download and execute our own runtime archive. The installer is an explicit companion installation. Developer ID signing, hardened runtime and [Apple notarization](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution) make macOS installation smoother. Raycast does not document Developer ID signing as a prerequisite for submitting an extension PR; companion acceptance remains a reviewer decision. Source archives, dependency notices and reproducible native build recipes remain available with each engine release. Signing and notarization require a maintainer's Apple Developer credentials; they are not prerequisites for end users.
 
 The current ZIP already includes portable Python, MLX, Core ML support and the decoders. Initial model weights are a separate, explicit download. A Store installation still needs that same runtime and model; changing packaging does not remove these requirements or move inference to a cloud service.
 
@@ -63,9 +63,9 @@ python scripts/build_installer.py
 python scripts/build_store.py
 ```
 
-This creates a native installer under `.build/companion` and a small Store source tree under `.build/store/semantic-search`, plus review ZIPs outside the checkout. The Store tree has no runtime archive or model weights. Install the unsigned test build only in a trusted development environment; it is not a notarized public installer.
+This creates a native installer under `.build/companion` and a small Store source tree under `.build/store/semantic-search`, plus review ZIPs outside the checkout. The Store tree has no runtime archive or model weights. The unsigned installer is not notarized and macOS may require explicit approval when opening a downloaded copy. Disclose this in release notes and during Store review.
 
-For a public companion build, use an existing Developer ID Application identity and a configured notarytool Keychain profile:
+For an optionally signed and notarized companion build, use an existing Developer ID Application identity and a configured notarytool Keychain profile:
 
 ```sh
 python scripts/build_installer.py --identity "Developer ID Application: Example Developer (TEAMID)" --notary-profile "semantic-search-notary"
@@ -78,9 +78,9 @@ Build both launcher packages only after the final payload is sealed. Run `script
 
 ## Submission status and remaining checks
 
-- Local installer extraction, installation, repeat installation, Store discovery, text/photo indexing/search and incremental scans have been tested with synthetic data. Raycast UI tests cover setup, text/photo results, previews, Actions shortcuts and library navigation. An isolated Tinycast command also verifies photo search and its inline preview loader. Isolated failed-update tests restarted the previous engine and preserved its data, including a replacement that remained alive and held the service lock. Service/extension tests cover refusal to stop active jobs, data preservation and no executable fallback in Store mode.
+- Downloaded installer extraction, fresh/repeat installation with a minimal PATH, Store discovery, both built-in models on synthetic text/photos, PDF/photo previews, incremental scans, exclusions, idle unloading, engine restart and index-preserving model deletion have been tested. Raycast UI tests cover setup, text/photo results, previews, Actions shortcuts and library navigation. An isolated Tinycast command also verifies photo search and its inline preview loader. Isolated failed-update tests restarted the previous engine and preserved its data, including a replacement that remained alive and held the service lock. Service/extension tests cover refusal to stop active jobs, data preservation and no executable fallback in Store mode.
 - The Raycast account author is `nik_ustinovich`. The Store package uses a supported category, 512-pixel icon, README, changelog and official build/lint scripts. Confirm the latest API and these requirements before every submission.
-- Complete Developer ID signing/notarization and test the downloaded installer with quarantine on a clean account/Mac without a developer toolchain. Current validation is local and isolated, not a factory-clean Mac test.
+- Optionally add Developer ID signing/notarization for smoother macOS installation. Without it, disclose macOS opening approval. Current validation uses fresh isolated storage and a minimal PATH, not a factory-clean Mac or a separate macOS account.
 - Produce final Store screenshots using synthetic files, complete an independent source/history/asset privacy/license review, and make the reviewed companion assets accessible before submitting the public Store PR. The repository remains private.
 - Exercise both Tinycast and Raycast with the final companion package, including cancellation, exclusions, previews, unloading and failed-update recovery. Preserve the same engine/model revisions when comparing latency and memory.
 - Store acceptance of the companion design remains a reviewer decision. No Store PR has been submitted.

@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--installer', type=Path, required=True)
-    parser.add_argument('--public', action='store_true', help='Require signed/notarized public companion assets')
+    parser.add_argument('--require-notarization', '--public', dest='require_notarization', action='store_true', help='Optionally require Developer ID signing and notarization')
     args = parser.parse_args()
     expected = json.loads((ROOT / 'extension/assets/runtime-manifest.json').read_text())
     version = json.loads((ROOT / 'extension/package.json').read_text())['version']
@@ -52,8 +52,8 @@ def main():
         for name in archive.namelist():
             if name.endswith('/') or name.startswith('__MACOSX/') or name.endswith('runtime.zip'): continue
             audit(name, archive.read(name))
-    if args.public:
-        assert expected.get('developer_id_signed'), 'Public release requires a Developer ID signed runtime'
+    if args.require_notarization:
+        assert expected.get('developer_id_signed'), 'This gate requires a Developer ID signed runtime'
         assert not any(marker in args.installer.name for marker in ('unsigned', 'unnotarized')), 'Public installer is a test build'
         with tempfile.TemporaryDirectory(prefix='semantic-search-notary-check-') as directory:
             subprocess.run(['/usr/bin/ditto', '-x', '-k', str(args.installer), directory], check=True)
@@ -61,7 +61,7 @@ def main():
             subprocess.run(['/usr/bin/codesign', '--verify', '--deep', '--strict', str(app)], check=True)
             subprocess.run(['xcrun', 'stapler', 'validate', str(app)], check=True)
             subprocess.run(['/usr/sbin/spctl', '--assess', '--type', 'execute', str(app)], check=True)
-    print('Matching installer/Store payloads, source archive and privacy audit passed.' + (' Public signing checks passed.' if args.public else ' Local preview only; signing/notarization not verified.'))
+    print('Matching installer/Store payloads, source archive and privacy audit passed.' + (' Public signing checks passed.' if args.require_notarization else ' Unsigned build; Developer ID/notarization not verified.'))
 
 
 if __name__ == '__main__':

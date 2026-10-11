@@ -76,8 +76,10 @@ def main():
     destination = ROOT.parent / f'semantic-search-engine-v{version}{suffix}.zip'
     subprocess.run(['/usr/bin/ditto', '-c', '-k', '--keepParent', str(app), str(destination)], check=True)
     (destination.with_suffix('.sha256')).write_text(f'{sha256(destination.read_bytes()).hexdigest()}  {destination.name}\n')
-    print(f'Local test installer: {destination.name} ({destination.stat().st_size / 1e6:.1f} MB)')
-    print('Notarized installer' if args.notary_profile else 'Local test build: public distribution still needs signing/notarization.')
+    print(f'Companion installer: {destination.name} ({destination.stat().st_size / 1e6:.1f} MB)')
+    print('Notarized installer' if args.notary_profile else
+          'Developer ID signed, not notarized: macOS may require explicit opening approval.' if args.identity else
+          'Unsigned installer: macOS may require explicit opening approval; no Developer ID/notarization.')
 
 
 if __name__ == '__main__':
