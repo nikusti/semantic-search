@@ -6,15 +6,19 @@ Semantic Search finds documents, photos, video scenes and sounds by meaning. Des
 
 ## Preview
 
+Find a photograph by describing what is in it.
+
+![Searching for a bench at sunset finds a photograph with a generic filename](docs/screenshots/photo-search.png)
+
 Find a document by its contents, even when its filename gives no clues.
 
 ![Searching for safe database migration finds a document with a random filename](docs/screenshots/document-search.png)
 
-Find a photograph by describing what is in it.
+Find a recording by describing its sound, with a timestamp for the matching segment.
 
-![Searching for a white car finds the matching photograph with a random filename](docs/screenshots/photo-search.png)
+![Searching for a repeatedly beeping alarm finds a synthetic audio recording with a random filename](docs/screenshots/audio-search.png)
 
-These are real Raycast search results using synthetic documents and generated photographs.
+Examples shown in Tinycast. The document and audio examples use synthetic test files.
 
 ## How it works
 

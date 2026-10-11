@@ -12,6 +12,7 @@ PUBLIC_PNG_ASSETS = {
     "extension/assets/icon.png",
     "docs/screenshots/document-search.png",
     "docs/screenshots/photo-search.png",
+    "docs/screenshots/audio-search.png",
 }
 PATTERNS = {
     "personal absolute path": re.compile(r"/(?:Users|home)/[A-Za-z0-9_.-]+/"),
