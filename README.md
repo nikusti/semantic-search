@@ -4,6 +4,18 @@
 
 Semantic Search finds documents, photos, video scenes and sounds by meaning. Describe what you need, preview a match, and open the original file.
 
+## Preview
+
+Find a document by its contents, even when its filename gives no clues.
+
+![Searching for safe database migration finds a document with a random filename](docs/screenshots/document-search.png)
+
+Find a photograph by describing what is in it.
+
+![Searching for a white car finds the matching photograph with a random filename](docs/screenshots/photo-search.png)
+
+These are real Raycast search results using synthetic documents and generated photographs.
+
 ## How it works
 
 1. Download **EmbeddingGemma 2** from the model settings. The model runs on your Mac.

@@ -7,6 +7,12 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 FORBIDDEN_FOLDERS = {"models", "data", "artifacts", "fixtures", "node_modules", ".venv", "__pycache__", ".build"}
 PRIVATE_SUFFIXES = {".sqlite3", ".db", ".npy", ".npz", ".safetensors", ".gguf", ".mp4", ".mov", ".mp3", ".wav", ".heic", ".jpg", ".jpeg", ".zip", ".rayext"}
+# Only the icon and individually reviewed screenshots are public binary assets.
+PUBLIC_PNG_ASSETS = {
+    "extension/assets/icon.png",
+    "docs/screenshots/document-search.png",
+    "docs/screenshots/photo-search.png",
+}
 PATTERNS = {
     "personal absolute path": re.compile(r"/(?:Users|home)/[A-Za-z0-9_.-]+/"),
     "GitHub credential": re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b"),
@@ -38,7 +44,7 @@ def main():
         try:
             text = content.decode("utf-8")
         except UnicodeDecodeError:
-            if name != "extension/assets/icon.png":
+            if name not in PUBLIC_PNG_ASSETS or not content.startswith(b"\x89PNG\r\n\x1a\n"):
                 failures.append(f"{name}: unexpected binary asset")
             continue
         for label, pattern in PATTERNS.items():
