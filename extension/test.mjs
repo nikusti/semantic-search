@@ -7,6 +7,7 @@ const directory=await mkdtemp(join(tmpdir(),'semantic-search-tests-'));
 try {
   const output=join(directory,'runtime.test.cjs');
   await build({entryPoints:['tests/runtime.test.ts'],outfile:output,bundle:true,platform:'node',format:'cjs',target:'es2022'});
-  const result=spawnSync(process.execPath,['--test',output],{stdio:'inherit'});
-  process.exitCode=result.status || 0;
+  const result=spawnSync(process.execPath,['--test',output],{stdio:'inherit',timeout:30000});
+  process.exitCode=result.status ?? 1;
 } finally { await rm(directory,{recursive:true,force:true}); }
+if (!process.exitCode) await import('./scripts/test.mjs');

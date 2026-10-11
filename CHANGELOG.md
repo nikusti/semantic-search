@@ -2,6 +2,14 @@
 
 The complete published version history is kept here. Earlier installation archives are retired from this repository; use the latest release. Dates are in UTC.
 
+## [Unreleased]
+
+- Handle malformed custom service URLs with a repair message instead of crashing setup.
+- Prevent stale settings polls from resetting applied changes or reporting obsolete errors.
+- Preserve exact native folder paths, including whitespace and line breaks, through indexing and exclusion requests.
+- Keep the exclusion editor synchronized with accepted server updates while preserving unfinished input and newer local edits.
+- Share nine UI regression tests and Raycast manifest/type configuration between ZIP and Store builds. Published 0.5.0 assets are unchanged.
+
 ## [0.5.0] - 2026-10-11
 
 - Add a native companion-engine installer and generate a small Store review package from the same extension source.

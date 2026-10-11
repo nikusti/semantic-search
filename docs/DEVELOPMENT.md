@@ -47,6 +47,8 @@ npm run build
 
 Tinycast can import `extension/dist`. Raycast developers can use `npm run dev` or `npm run build:raycast`. The automatic engine requires the runtime assets generated below; a source checkout intentionally excludes binary runtime assets.
 
+`npm run check` first generates manifest types with the official Raycast compiler into ignored `.build/extension-typecheck`, then checks source and tests. `npm test` runs both runtime-installation tests and nine UI regressions with a mocked launcher and local API; it does not start a launcher or touch your library. Store packages reuse the same UI regression suite.
+
 ## Tests
 
 ```sh

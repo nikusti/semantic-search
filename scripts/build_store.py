@@ -20,6 +20,10 @@ def main():
     shutil.copytree(source / 'src', output / 'src')
     shutil.copyfile(source / 'tsconfig.json', output / 'tsconfig.json')
     shutil.copyfile(source / 'eslint.config.js', output / 'eslint.config.js')
+    shutil.copytree(source / 'scripts', output / 'scripts')
+    (output / 'tests').mkdir()
+    for name in ['raycast-mock.tsx', 'regressions.test.tsx']:
+        shutil.copyfile(source / 'tests' / name, output / 'tests' / name)
     shutil.copyfile(source / 'assets/icon.png', output / 'assets/icon.png')
     shutil.copyfile(source / 'assets/runtime-manifest.json', output / 'assets/runtime-manifest.json')
     (output / 'assets/distribution.json').write_text(json.dumps(dict(mode='companion',
@@ -27,7 +31,7 @@ def main():
     package['commands'] = [entry for entry in package['commands'] if entry['name'] == 'semantic-search']
     package['description'] = 'Find local documents, photos, video scenes and sounds by meaning. Requires the Semantic Search Engine.'
     package['preferences'][0]['description'] = 'Leave blank to use the installed Semantic Search Engine. Advanced: connect to your own local service.'
-    package['scripts'] = dict(build='ray build', dev='ray develop', lint='ray lint', publish='ray publish')
+    package['scripts'] = dict(build='ray build', dev='ray develop', lint='ray lint', publish='ray publish', test='node scripts/test.mjs')
     (output / 'package.json').write_text(json.dumps(package, indent=2) + '\n')
     lock = json.loads((source / 'package-lock.json').read_text())
     (output / 'package-lock.json').write_text(json.dumps(lock, indent=2) + '\n')
@@ -55,7 +59,7 @@ The engine listens only on loopback, rejects browser origins, and is accessible 
 
 Source, release notices and matching native dependency sources: [Semantic Search](https://github.com/nikusti/semantic-search).
 ''')
-    (output / 'CHANGELOG.md').write_text('# Semantic Search Changelog\n\n## [Initial Store Release] - {PR_MERGE_DATE}\n\n- Search local files with EmbeddingGemma 2 through a separately installed local engine.\n- Manage models, folders, exclusions and incremental indexing from Search.\n')
+    shutil.copyfile(source / 'CHANGELOG.md', output / 'CHANGELOG.md')
     screenshots = ROOT / 'extension/metadata'
     if screenshots.is_dir(): shutil.copytree(screenshots, output / 'metadata')
     forbidden = {'runtime.zip', 'node_modules', '.build'}

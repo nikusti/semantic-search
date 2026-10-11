@@ -94,10 +94,10 @@ test("another launcher refreshes untouched settings without discarding local edi
 });
 
 test("a native picker selection adds exclusions without replacing earlier folders", () => {
-  const saved = "~/Documents/private\n~/Pictures/private";
-  assert.equal(addExclusionFolders(saved, ["~/Downloads/private"]), saved + "\n~/Downloads/private");
-  assert.equal(addExclusionFolders(saved, ["~/Documents/private"]), saved);
-  assert.equal(addExclusionFolders(saved, []), saved);
+  const saved = ["~/Documents/private", "~/Pictures/private"];
+  assert.deepEqual(addExclusionFolders(saved, ["~/Downloads/private"]), [...saved, "~/Downloads/private"]);
+  assert.deepEqual(addExclusionFolders(saved, ["~/Documents/private"]), saved);
+  assert.deepEqual(addExclusionFolders(saved, []), saved);
 });
 
 import { fileURLToPath } from "node:url";
