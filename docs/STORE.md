@@ -6,7 +6,7 @@ Tinycast enables the [Raycast Store registry](https://tinycast.dev/docs/extensio
 
 Raycast publication creates a pull request in [raycast/extensions](https://github.com/raycast/extensions). The Raycast team reviews it and, after acceptance and merge, publishes the extension. See the [publication workflow](https://developers.raycast.com/basics/publish-an-extension).
 
-The extension has been submitted for review in [raycast/extensions#32190](https://github.com/raycast/extensions/pull/32190). The source repository and matching 0.5.0 companion assets are public. This is an open review, not an accepted Store listing. The GitHub author is subscribed to PR updates.
+The extension has been submitted for review in [raycast/extensions#32190](https://github.com/raycast/extensions/pull/32190). The source repository and matching 0.5.1 companion assets are public. This is an open review, not an accepted Store listing. The GitHub author is subscribed to PR updates.
 
 The submission contains the lightweight launcher UI and four Raycast screenshots using synthetic documents/generated photographs. Engine/model binaries and local library data are not included in the PR. The unsigned companion installer is disclosed in the PR and setup guide; acceptance of this installation design remains a reviewer decision.
 
@@ -79,7 +79,7 @@ Build both launcher packages only after the final payload is sealed. Run `script
 - The Raycast account author is `nik_ustinovich`. The final Store package passed official build/lint and the upstream metadata validator for all four 2000 by 1250 screenshots. It uses a supported category, 512-pixel icon, README, changelog and current API 2.7.3. The shared extension passes 18 runtime/UI tests; the generated Store package runs nine UI regressions. Confirm current requirements before future submissions.
 - Optionally add Developer ID signing/notarization for smoother macOS installation. Without it, disclose macOS opening approval. Current validation uses fresh isolated storage and a minimal PATH, not a factory-clean Mac or a separate macOS account.
 - Independent source/history/release-asset privacy and license reviews were completed before publication. The final submission scope and source/package privacy checks passed; reviewed companion assets and matching native dependency sources are public.
-- [Store PR #32190](https://github.com/raycast/extensions/pull/32190) is open for review. Verified automated-review fixes are also in the shared source; the existing 0.5.0 release assets are unchanged. Review feedback and CI results belong to that PR. Store acceptance of the companion design remains a reviewer decision.
+- [Store PR #32190](https://github.com/raycast/extensions/pull/32190) is open for review. Verified automated-review fixes are also in the shared source; the fixes ship in 0.5.1. Review feedback and CI results belong to that PR. Store acceptance of the companion design remains a reviewer decision.
 
 To remove only the engine, close/stop the service and delete its versioned `runtime` folder in shared storage. Keep `models`, `data` and `config.toml` to preserve the library. Removing the installer app itself does not uninstall the installed engine.
 
