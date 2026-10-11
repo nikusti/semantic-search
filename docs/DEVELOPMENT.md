@@ -53,7 +53,7 @@ Tinycast can import `extension/dist`. Raycast developers can use `npm run dev` o
 python -m pytest -q
 ```
 
-Tests create synthetic files and fake inference workers. The packaged decoder tests exercise real PDF, video and audio decoding without Homebrew tools. CI installs the lightweight `requirements.testing.txt`, audits staged source, and runs Python tests, the extension tests, typechecking and the Tinycast build. CI does not download model weights.
+Tests create synthetic files and fake inference workers. The packaged decoder tests exercise real PDF, video and audio decoding without Homebrew tools. CI installs the lightweight `requirements.testing.txt`, audits staged source, and runs Python tests, the extension tests, typechecking and the Tinycast build. Apple's VideoToolbox preview encoding is tested on a separate macOS runner; the remaining service tests run on Linux. CI does not download model weights.
 
 ## Build a ready-to-use release
 

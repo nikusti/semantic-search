@@ -87,10 +87,6 @@ def test_bundled_media_and_pdf_without_homebrew(tmp_path,monkeypatch):
     assert 31000<len(samples)<=32000 and np.isfinite(samples).all()
     assert .2<float(np.std(samples))<.5
     assert media.decoder_available(config)
-    movie=tmp_path/'segment.mp4'
-    media.render_segment(path,movie,1,3,config,True)
-    clip_info=media.probe(movie,config)
-    assert clip_info.has_video and clip_info.has_audio and clip_info.duration==pytest.approx(2,abs=.15)
     wave=tmp_path/'segment.wav'
     media.render_segment(path,wave,1,3,config,False)
     assert media.probe(wave,config).duration==pytest.approx(2,abs=.02)
@@ -98,3 +94,14 @@ def test_bundled_media_and_pdf_without_homebrew(tmp_path,monkeypatch):
     image,pages=render_pdf(pdf,'pdfium')
     assert pages==1 and image.startswith(b'\xff\xd8')
     with Image.open(BytesIO(image)) as bitmap: assert max(bitmap.size)==1400
+
+
+@pytest.mark.skipif(sys.platform!='darwin',reason='VideoToolbox is supplied by macOS')
+def test_video_segment_uses_system_videotoolbox_without_homebrew(tmp_path,monkeypatch):
+    monkeypatch.setenv('PATH','/usr/bin:/bin')
+    config=initial_config(tmp_path/'support')
+    path=tmp_path/'synthetic.mp4';make_clip(path)
+    movie=tmp_path/'segment.mp4'
+    media.render_segment(path,movie,1,3,config,True)
+    clip_info=media.probe(movie,config)
+    assert clip_info.has_video and clip_info.has_audio and clip_info.duration==pytest.approx(2,abs=.15)
