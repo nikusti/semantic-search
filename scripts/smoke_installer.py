@@ -51,6 +51,7 @@ def main():
     args = parser.parse_args()
     if not 1024 <= args.port <= 65535: raise SystemExit('Use an unoccupied local test port')
     with socket.socket() as probe:
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try: probe.bind(('127.0.0.1', args.port))
         except OSError: raise SystemExit('Test port is occupied; no existing service will be touched')
     work = args.work.resolve()
@@ -129,6 +130,9 @@ for name, entry in MANIFEST['processor']['files'].items():
     def start():
         nonlocal process
         with socket.socket() as probe:
+            # Our stopped HTTP listener can leave TIME_WAIT sockets on macOS.
+            # Reuse the address without allowing a second active listener.
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             try: probe.bind(('127.0.0.1', args.port))
             except OSError: raise RuntimeError('Test port became occupied; refusing to touch its service')
         process = subprocess.Popen([str(python), '-I', '-B', '-m', 'tinysearch.runtime', '--storage', str(storage), '--port', str(args.port)],
