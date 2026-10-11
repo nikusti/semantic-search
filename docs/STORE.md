@@ -1,4 +1,4 @@
-# Store publication planning
+# Store publication
 
 Semantic Search is currently distributed through GitHub releases. Publishing a GitHub repository does not publish a Raycast Store extension.
 
@@ -6,26 +6,23 @@ Tinycast enables the [Raycast Store registry](https://tinycast.dev/docs/extensio
 
 Raycast publication creates a pull request in [raycast/extensions](https://github.com/raycast/extensions). The Raycast team reviews it and, after acceptance and merge, publishes the extension. See the [publication workflow](https://developers.raycast.com/basics/publish-an-extension).
 
-Before submitting this project:
+The extension has been submitted for review in [raycast/extensions#32190](https://github.com/raycast/extensions/pull/32190). The source repository and matching 0.5.0 companion assets are public. This is an open review, not an accepted Store listing. The GitHub author is subscribed to PR updates.
 
-- Replace the large embedded engine asset with a distribution design meeting Raycast's binary-dependency rules. The guidelines prohibit heavy bundled dependencies and require verifiable sources, builds and integrity checks. A maintainer-controlled binary download is not automatically acceptable.
-- Confirm the Raycast account author, latest supported API, macOS restriction and required metadata. Add the extension README, Store-format changelog and clean screenshots showing synthetic files.
-- Validate the distribution build and test model setup, indexing, cancellation, previews and search in both launchers.
-- Keep the published version history in `CHANGELOG.md`. Distribute only the reviewed current installers and their corresponding native source archive; historical installers and development objects are not part of this repository.
+The submission contains the lightweight launcher UI and four Raycast screenshots using synthetic documents/generated photographs. Engine/model binaries and local library data are not included in the PR. The unsigned companion installer is disclosed in the PR and setup guide; acceptance of this installation design remains a reviewer decision.
 
-The full [Store preparation guidelines](https://developers.raycast.com/basics/prepare-an-extension-for-store) determine acceptance. Store submission is a separate step from the ready-to-use ZIP release.
+The [Store preparation guidelines](https://developers.raycast.com/basics/prepare-an-extension-for-store) and [publication workflow](https://developers.raycast.com/basics/publish-an-extension) govern review. Maintainer feedback and automated checks are handled on the same PR; merge triggers Store publication.
 
 ## One project, two distribution packages
 
-The intended Store design keeps one engine and one extension codebase. The existing offline ZIP contains both. A Store package would contain the small launcher interface and connect to the same separately installed local engine.
+The Store design keeps one engine and one extension codebase. The offline ZIP contains both. The Store package contains the small launcher interface and connects to the same separately installed local engine.
 
 Both packages should use the same pinned engine release, model revisions, indexing pipeline, shared storage and local protocol. Packaging alone does not change retrieval quality, model memory use or search speed. Installation and update steps differ; startup and search still need verification in both hosts.
 
-Version 0.5.0 prepares a Store source package and a native companion installer. They are not yet published to the Store; the companion installer is distributed without Developer ID signing/notarization. A simple download of an executable from a maintainer-controlled server is not automatically acceptable under Raycast's rules. The engine installation method must satisfy the Store review while keeping setup free of terminal commands.
+Version 0.5.0 provides a Store source package and a native companion installer. Store review is pending; the companion installer is distributed without Developer ID signing/notarization. A simple download of an executable from a maintainer-controlled server is not automatically acceptable under Raycast's rules. The engine installation method must satisfy the Store review while keeping setup free of terminal commands.
 
 ## Companion installation experience
 
-The practical first Store release should use a companion-engine installer. Published integrations already use this approach: the [LM Studio extension](https://github.com/raycast/extensions/blob/main/extensions/lm-studio/README.md) connects to an independently installed local application. This is a precedent for the design, not approval of Semantic Search.
+The submitted Store release uses a companion-engine installer. Published integrations already use this approach: the [LM Studio extension](https://github.com/raycast/extensions/blob/main/extensions/lm-studio/README.md) connects to an independently installed local application. This is a precedent for the design, not approval of Semantic Search.
 
 1. Install **Semantic Search** from the launcher Store.
 2. Open Search. If the engine is missing, show one setup screen explaining that processing is local, the supported Mac requirements, and the required disk space.
@@ -76,14 +73,13 @@ The signing path signs nested runtime executables/libraries, updates the shared 
 
 Build both launcher packages only after the final payload is sealed. Run `scripts/check_packages.py` to verify matching payload hashes, native sources and absence of a runtime archive in the Store package. Developer ID signing generally requires a paid [Apple Developer Program](https://developer.apple.com/programs/) membership; end users do not need one. Raycast's [publication workflow](https://developers.raycast.com/basics/publish-an-extension) uses a GitHub PR, and its [free plan](https://www.raycast.com/pricing) includes extensions/developer tooling.
 
-## Submission status and remaining checks
+## Validation and review status
 
 - Downloaded installer extraction, fresh/repeat installation with a minimal PATH, Store discovery, both built-in models on synthetic text/photos, PDF/photo previews, incremental scans, exclusions, idle unloading, engine restart and index-preserving model deletion have been tested. Raycast UI tests cover setup, text/photo results, previews, Actions shortcuts and library navigation. An isolated Tinycast command also verifies photo search and its inline preview loader. Isolated failed-update tests restarted the previous engine and preserved its data, including a replacement that remained alive and held the service lock. Service/extension tests cover refusal to stop active jobs, data preservation and no executable fallback in Store mode.
-- The Raycast account author is `nik_ustinovich`. The Store package uses a supported category, 512-pixel icon, README, changelog and official build/lint scripts. Confirm the latest API and these requirements before every submission.
+- The Raycast account author is `nik_ustinovich`. The final Store package passed official build/lint and the upstream metadata validator for all four 2000 by 1250 screenshots. It uses a supported category, 512-pixel icon, README, changelog and current API 2.7.3. Nine extension tests passed. Confirm current requirements before future submissions.
 - Optionally add Developer ID signing/notarization for smoother macOS installation. Without it, disclose macOS opening approval. Current validation uses fresh isolated storage and a minimal PATH, not a factory-clean Mac or a separate macOS account.
-- Produce final Store screenshots using synthetic files, complete an independent source/history/asset privacy/license review, and make the reviewed companion assets accessible before submitting the public Store PR. The repository remains private.
-- Exercise both Tinycast and Raycast with the final companion package, including cancellation, exclusions, previews, unloading and failed-update recovery. Preserve the same engine/model revisions when comparing latency and memory.
-- Store acceptance of the companion design remains a reviewer decision. No Store PR has been submitted.
+- Independent source/history/release-asset privacy and license reviews were completed before publication. The final submission scope and source/package privacy checks passed; reviewed companion assets and matching native dependency sources are public.
+- [Store PR #32190](https://github.com/raycast/extensions/pull/32190) is open for review. Review feedback and CI results belong to that PR. Store acceptance of the companion design remains a reviewer decision.
 
 To remove only the engine, close/stop the service and delete its versioned `runtime` folder in shared storage. Keep `models`, `data` and `config.toml` to preserve the library. Removing the installer app itself does not uninstall the installed engine.
 
