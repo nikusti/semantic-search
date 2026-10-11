@@ -13,6 +13,10 @@ PUBLIC_PNG_ASSETS = {
     "docs/screenshots/document-search.png",
     "docs/screenshots/photo-search.png",
     "docs/screenshots/audio-search.png",
+    "extension/metadata/semantic-search-1.png",
+    "extension/metadata/semantic-search-2.png",
+    "extension/metadata/semantic-search-3.png",
+    "extension/metadata/semantic-search-4.png",
 }
 PATTERNS = {
     "personal absolute path": re.compile(r"/(?:Users|home)/[A-Za-z0-9_.-]+/"),
