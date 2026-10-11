@@ -14,11 +14,17 @@ def main():
     assert manifest['version'] == lock['version'] == lock['packages']['']['version'] == version, 'Release versions disagree'
     assert f'"{version}"' in (ROOT / 'tinysearch/__init__.py').read_text(), 'Engine version differs'
     readme = (ROOT / 'README.md').read_text()
-    assert f'## [{version}]' in (ROOT / 'CHANGELOG.md').read_text(), 'Changelog is missing this version'
+    changelog = (ROOT / 'CHANGELOG.md').read_text()
+    assert f'## [{version}]' in changelog, 'Changelog is missing this version'
+    # An unreleased branch still points users to the last working release.
+    shipped = re.findall(r'## \[(\d+\.\d+\.\d+)\] - \d{4}-\d{2}-\d{2}', changelog)[0]
+    allowed = {version, shipped} if f'## [{version}] - Unreleased' in changelog else {version}
     for path in [ROOT / 'README.md', *sorted((ROOT / 'docs').glob('*.md'))]:
         content = path.read_text()
         for match in re.findall(r'semantic-search-(?:native-sources-)?v(\d+\.\d+\.\d+)\.(?:zip|rayext)', content):
-            assert match == version, f'{path.name}: stale download/build version {match}'
+            assert match in allowed, f'{path.name}: stale download/build version {match}'
+        for match in re.findall(r'/releases/tag/v(\d+\.\d+\.\d+)', content):
+            assert match in allowed, f'{path.name}: stale release link {match}'
         for link in re.findall(r'\]\(([^)]+)\)', content):
             if '://' in link or link.startswith('#'):
                 continue

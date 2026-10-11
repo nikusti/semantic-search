@@ -42,7 +42,12 @@ def main():
         config=initial_config(args.storage,args.port)
         import uvicorn
         from .server import create_app
-        uvicorn.run(create_app(config),host='127.0.0.1',port=args.port,access_log=False)
+        server = None
+        def stop():
+            server.should_exit = True
+        app = create_app(config, request_stop=stop)
+        server = uvicorn.Server(uvicorn.Config(app, host='127.0.0.1', port=args.port, access_log=False))
+        server.run()
 
 
 if __name__ == '__main__': main()

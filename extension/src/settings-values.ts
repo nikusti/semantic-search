@@ -1,5 +1,9 @@
 /** Refresh server-owned fields without overwriting an actual user draft. */
-export function reconcileValues<T extends object>(draft: T | undefined, previousServer: T | undefined, currentServer: T): T {
+export function reconcileValues<T extends object>(
+  draft: T | undefined,
+  previousServer: T | undefined,
+  currentServer: T,
+): T {
   if (!draft) return currentServer;
   if (!previousServer) return draft;
   const next = { ...draft };
@@ -10,6 +14,15 @@ export function reconcileValues<T extends object>(draft: T | undefined, previous
 }
 
 /** Native folder dialogs return the new selection, not every saved exclusion. */
-export function addExclusionFolders(current: string, selected: string[]): string {
-  return [...new Set([...current.split(/\r?\n/), ...selected].map(path => path.trim()).filter(Boolean))].join("\n");
+export function addExclusionFolders(
+  current: string,
+  selected: string[],
+): string {
+  return [
+    ...new Set(
+      [...current.split(/\r?\n/), ...selected]
+        .map((path) => path.trim())
+        .filter(Boolean),
+    ),
+  ].join("\n");
 }

@@ -3,7 +3,7 @@
   "title": "Semantic Search",
   "description": "Search local documents, photos, video scenes and audio with on-device embeddings.",
   "icon": "icon.png",
-  "author": "nikusti",
+  "author": "nik_ustinovich",
   "license": "MIT",
   "commands": [
     {
@@ -43,22 +43,25 @@
     "dev": "ray develop",
     "build:raycast": "ray build",
     "test": "node test.mjs",
-    "bundle:raycast": "ray bundle"
+    "bundle:raycast": "ray bundle",
+    "lint": "ray lint"
   },
   "dependencies": {
     "@raycast/api": "2.7.3",
     "react": "19.3.0"
   },
   "devDependencies": {
-    "esbuild": "0.25.12",
-    "typescript": "5.9.3",
+    "@raycast/eslint-config": "2.2.0",
+    "@types/node": "24.19.2",
     "@types/react": "19.3.0",
-    "@types/node": "24.19.2"
+    "esbuild": "0.25.12",
+    "eslint": "10.0.1",
+    "prettier": "3.8.2",
+    "typescript": "5.9.3"
   },
-  "version": "0.4.1",
+  "version": "0.5.0",
   "categories": [
-    "Productivity",
-    "Utilities"
+    "Productivity"
   ],
   "platforms": [
     "macOS"

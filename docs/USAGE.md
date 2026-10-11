@@ -65,11 +65,11 @@ Compatibility is checked before weight download; custom weights must load and en
 
 Updated built-in weights use separate model storage and indexes. Core ML also tracks the pinned vision, audio and preprocessing artifacts. Older indexes are kept; unchanged compatible settings reuse their existing vectors.
 
-To update the extension, install its newer package. Models and indexes stay in shared storage. If a previous engine is still running, restart the Mac and reopen search.
+To update the extension, install its newer package. Models and indexes stay in shared storage. Packaged engines from 0.5.0 onward stop safely for idle updates and restore the previous engine if startup fails. Cancel indexing or wait before updating. An older engine needs a one-time Mac restart before opening the new extension.
 
 ## Privacy and limits
 
-Inference, indexing and previews run locally. Files are not sent to a cloud inference service. Internet access is required for the initial model download; the bundled engine installs offline. The service binds only to loopback and rejects browser-origin requests. Other local processes can access it. Local indexes contain paths and extracted content.
+Inference, indexing and previews run locally. Raycast writes temporary JPEG preview files in its own support folder, removes them on selection changes, and expires interrupted sessions on the next preview request after 15 minutes. Tinycast keeps previews inline. Files are not sent to a cloud inference service. Internet access is required for the initial model download; the bundled engine installs offline. The service binds only to loopback and rejects browser-origin requests. Other local processes can access it. Local indexes contain paths and extracted content.
 
 - Only readable files in your chosen folders are indexed. Apple Photos libraries and remote iCloud-only assets need a dedicated importer, which is not included.
 - Scanned PDFs without an extractable text layer need OCR, which is not included.
