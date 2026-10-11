@@ -49,7 +49,7 @@ class ExclusionsRequest(BaseModel):
     excluded_paths: list[str] = Field(max_length=100)
 
 
-def create_app(config, engine=None):
+def create_app(config, engine=None, request_stop=None):
     operation_lock = threading.RLock()
     @asynccontextmanager
     async def lifespan(app):
@@ -95,6 +95,22 @@ def create_app(config, engine=None):
     def info():
         from . import __version__
         return {'application': 'semantic-search', 'version': __version__, 'protocol': 1}
+
+    @app.post('/v1/engine/stop')
+    def stop_engine():
+        # Used for explicit runtime updates. Never terminate active work or
+        # signal unrelated processes; uvicorn performs normal lifespan cleanup.
+        with operation_lock, app.state.settings.job_lock:
+            settings = app.state.settings
+            if request_stop is None:
+                raise HTTPException(409, 'This service is managed externally')
+            if (getattr(app.state, 'manual_index', False) or
+                    settings.job['state'] in {'downloading', 'applying', 'indexing', 'cancelling'} or
+                    (settings.thread and settings.thread.is_alive())):
+                raise HTTPException(409, 'Cancel indexing or wait for current work before updating the engine')
+            settings.stopping.set()
+            request_stop()
+            return {'stopping': True}
 
     @app.post("/v1/search")
     def search(body: SearchRequest):

@@ -67,9 +67,9 @@ npm ci --ignore-scripts
 npm run check
 npm test
 npm run build
-npm run bundle:raycast -- -o ../../semantic-search-v0.4.1.rayext
+npm run bundle:raycast -- -o ../../semantic-search-v0.5.0.rayext
 cd ..
-python scripts/package_release.py --raycast ../semantic-search-v0.4.1.rayext
+python scripts/package_release.py --raycast ../semantic-search-v0.5.0.rayext
 ```
 
 The runtime build also requires Xcode Command Line Tools (Swift, clang, make and pkg-config). It compiles the Core ML bridge and rebuilds PyAV against LGPL-only FFmpeg; `--no-deps` intentionally omits unused GPL codec wheels. Complete native dependency source archives and build recipes accompany binary releases.
@@ -84,7 +84,7 @@ Before uploading, stage the intended source and run `python scripts/check_releas
 
 ## Architecture
 
-The launcher installs the embedded runtime once and starts a detached local Python service. A filesystem installation lock serializes extraction across launchers. The service holds its own lock, so concurrent command launches cannot start duplicate engines for one storage folder.
+The bundled launcher installs its included runtime once; the Store variant discovers an explicit companion installation. Both start the same detached local Python service. A filesystem installation lock serializes extraction across launchers. The service holds its own lock, so concurrent command launches cannot start duplicate engines for one storage folder.
 
 The parent service remains available while inference workers load on demand and exit after inactivity. Query/session activation loads text only, preserving the configured index identity. An image/video operation replaces that worker with a combined text/vision worker. During a pinned indexing pass it is reused for text and vision, then released; a query outside indexing returns to text-only. Previous workers exit before replacement. The audio worker is loaded only for indexing sound. Bounded decoder subprocesses use the bundled PyAV/FFmpeg libraries and PDFium, with operation timeouts. The HTTP API accepts loopback requests and rejects browser origins.
 
@@ -113,3 +113,9 @@ After every release, review the repository description, README, installation gui
 - Before public distribution, complete an independent privacy/license review of source, history and release assets, plus Store requirements and installer signing checks.
 
 CI runs documentation checks on changes and again when a GitHub release is published. Automated checks supplement this review; they do not judge every prose claim.
+
+## Companion and Store preview builds
+
+Version 0.5.0 is unreleased. Its native installer and small Store package are built with `scripts/build_installer.py` and `scripts/build_store.py`; see [Store packaging](STORE.md) for the ordered build, signing and validation steps. The Store package reuses the same Search/Manage Library components, rather than maintaining a second engine. Model downloads and existing index identities are unchanged.
+
+Run the generated Store package's official `npm run build` and `npm run lint`. The author must be the actual Raycast username, not necessarily the GitHub handle. A local development build does not publish anything. Do not submit unsigned companion assets or private test data.

@@ -21,9 +21,9 @@ The intended Store design keeps one engine and one extension codebase. The exist
 
 Both packages should use the same pinned engine release, model revisions, indexing pipeline, shared storage and local protocol. Packaging alone does not change retrieval quality, model memory use or search speed. Installation and update steps differ; startup and search still need verification in both hosts.
 
-The Store package and a suitable engine installer are planned, not yet published. A simple download of an executable from a maintainer-controlled server is not automatically acceptable under Raycast's rules. The engine installation method must satisfy the Store review while keeping setup free of terminal commands.
+Version 0.5.0 prepares a Store source package and a native companion installer. They are not yet published to the Store; the current installer is a local test build without Developer ID signing/notarization. A simple download of an executable from a maintainer-controlled server is not automatically acceptable under Raycast's rules. The engine installation method must satisfy the Store review while keeping setup free of terminal commands.
 
-## Proposed installation experience
+## Companion installation experience
 
 The practical first Store release should use a companion-engine installer. Published integrations already use this approach: the [LM Studio extension](https://github.com/raycast/extensions/blob/main/extensions/lm-studio/README.md) connects to an independently installed local application. This is a precedent for the design, not approval of Semantic Search.
 
@@ -48,18 +48,44 @@ Keep the engine, local protocol and launcher UI in this repository. Generate two
 
 Separate installation policy from service startup in `extension/src/runtime.ts`. Bundled mode may verify and unpack the included archive. Store mode may discover and start an explicitly installed companion, but must not contain the large archive or run a fallback executable download. Both modes check application identity, engine version and protocol before making requests.
 
-Use the same atomic installation checks and single-service lock. Updates must finish or safely cancel active work, stop the old service, and select the new runtime without deleting models or indexes. A failed update must preserve the previous working installation. The current restart-required update message should be replaced by this flow before Store submission.
+Use the same atomic installation checks and single-service lock. Updates must finish or safely cancel active work, stop the old service, and select the new runtime without deleting models or indexes. A failed update must preserve the previous working installation. Version 0.5.0 stops an idle packaged service through its own local API, rejects updates during active jobs, and attempts to restart the previous runtime if the replacement fails. Engines older than 0.5.0 still need a one-time restart because they do not expose this safe stop endpoint.
 
-Static launcher preferences should use Raycast's preferences API. Model downloads, index status, cancellation and folder management need a library-management screen with live state; discuss its fit with the Store's restriction on separate configuration commands during review. Do not copy the current settings command into a Store submission without addressing that guideline.
+Static launcher preferences should use Raycast's preferences API. Model downloads, index status, cancellation and folder management need a library-management screen with live state; discuss its fit with the Store's restriction on separate configuration commands during review. The generated Store package exposes only Search. Manage Library uses the navigation API to open the shared model/index controls within Search. The ZIP retains its separate settings command for existing users; confirm the live library screen with Store reviewers.
 
-## Work required before submission
+## Build the two packages
 
-- Build and validate the companion installer, including signed nested executables and libraries, notarization and a clear uninstall path. Preserve user models and indexes unless explicitly requested otherwise.
-- Add guided missing-engine, incompatible-version and failed-installation states; share the existing search and library-management components across both package builds.
-- Use the actual Raycast account username and supported categories, add the official lint/publication scripts, and produce a normal Store distribution build with no runtime payload.
-- Create screenshots with synthetic documents and photos. Include model/runtime download sizes, local-processing details and companion requirements in the Store README.
-- Exercise both packages on a clean Mac/account: installation without a developer toolchain, model download, indexing, exclusions, cancellation, previews, search, unloading and updates. Test both Tinycast and Raycast, and compare the same engine version for startup time and memory.
-- Submit the extension for Raycast review only after the distribution design and tests are ready. Store acceptance remains a reviewer decision.
+The same engine payload and manifest must be used by every package. Build/sign the runtime once before building the installer, ZIP and Store package. Do not rebuild or re-sign the payload after generating the Store manifest. The signer reuses an already sealed payload; changing signing identities requires a fresh runtime build.
+
+```sh
+python scripts/build_runtime.py
+python scripts/package_native_sources.py
+python scripts/build_installer.py
+python scripts/build_store.py
+```
+
+This creates a native installer under `.build/companion` and a small Store source tree under `.build/store/semantic-search`, plus review ZIPs outside the checkout. The Store tree has no runtime archive or model weights. Install the unsigned test build only in a trusted development environment; it is not a notarized public installer.
+
+For a public companion build, use an existing Developer ID Application identity and a configured notarytool Keychain profile:
+
+```sh
+python scripts/build_installer.py --identity "Developer ID Application: Example Developer (TEAMID)" --notary-profile "semantic-search-notary"
+python scripts/build_store.py
+```
+
+The signing path signs nested runtime executables/libraries, updates the shared payload hash, signs the app with hardened runtime, submits to Apple's notary service, staples the ticket and checks Gatekeeper acceptance. Python's documented entitlements permit native libraries/JIT and replacement of LGPL libraries. This credential-dependent path still requires a real signed/quarantined installation test; an ad-hoc test build does not prove notarization success.
+
+Build both launcher packages only after the final payload is sealed. Run `scripts/check_packages.py` to verify matching payload hashes, native sources and absence of a runtime archive in the Store package. Developer ID signing generally requires a paid [Apple Developer Program](https://developer.apple.com/programs/) membership; end users do not need one. Raycast's [publication workflow](https://developers.raycast.com/basics/publish-an-extension) uses a GitHub PR, and its [free plan](https://www.raycast.com/pricing) includes extensions/developer tooling.
+
+## Submission status and remaining checks
+
+- Local installer extraction, installation, repeat installation, Store discovery, text/photo indexing/search and incremental scans have been tested with synthetic data. Raycast UI tests cover setup, text/photo results, previews, Actions shortcuts and library navigation. An isolated Tinycast command also verifies photo search and its inline preview loader. Isolated failed-update tests restarted the previous engine and preserved its data, including a replacement that remained alive and held the service lock. Service/extension tests cover refusal to stop active jobs, data preservation and no executable fallback in Store mode.
+- The Raycast account author is `nik_ustinovich`. The Store package uses a supported category, 512-pixel icon, README, changelog and official build/lint scripts. Confirm the latest API and these requirements before every submission.
+- Complete Developer ID signing/notarization and test the downloaded installer with quarantine on a clean account/Mac without a developer toolchain. Current validation is local and isolated, not a factory-clean Mac test.
+- Produce final Store screenshots using synthetic files, complete an independent source/history/asset privacy/license review, and make the reviewed companion assets accessible before submitting the public Store PR. The repository remains private.
+- Exercise both Tinycast and Raycast with the final companion package, including cancellation, exclusions, previews, unloading and failed-update recovery. Preserve the same engine/model revisions when comparing latency and memory.
+- Store acceptance of the companion design remains a reviewer decision. No Store PR has been submitted.
+
+To remove only the engine, close/stop the service and delete its versioned `runtime` folder in shared storage. Keep `models`, `data` and `config.toml` to preserve the library. Removing the installer app itself does not uninstall the installed engine.
 
 ## Possible future native Tinycast integration
 

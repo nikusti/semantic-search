@@ -1,14 +1,32 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, writeFile, access, rm, chmod } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, access, rm, chmod, readdir, stat, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { digest, installRuntime, validateManifest } from "../src/runtime";
+import { CompanionRequired, digest, distribution, installRuntime, validateManifest } from "../src/runtime";
 
 const manifest = { version: "0.2.0", sha256: "0".repeat(64), platform: "darwin-arm64" as const, unpacked_bytes: 100 };
 test("rejects malformed runtime manifests", () => {
   assert.throws(() => validateManifest({ ...manifest, version: "../../models" }));
   assert.throws(() => validateManifest({ ...manifest, sha256: "invalid" }));
+});
+test("Store mode never falls back to installing an executable archive", async () => {
+  const root = await mkdtemp(join(tmpdir(), "semantic-search-companion-"));
+  try {
+    const assets = join(root, "assets"), storage = join(root, "storage");
+    await mkdir(assets); await mkdir(join(storage, "data"), { recursive: true });
+    await writeFile(join(storage, "data/index.sqlite3"), "preserve");
+    await writeFile(join(assets, "distribution.json"), JSON.stringify({ mode: "companion", installer_url: "https://github.com/nikusti/semantic-search/releases/tag/v0.2.0" }));
+    // Even if an archive is present, a Store build must not execute it.
+    await writeFile(join(assets, "runtime.zip"), "not executable");
+    await assert.rejects(installRuntime({ assets, storage }, manifest), CompanionRequired);
+    assert.equal(await readFile(join(storage, "data/index.sqlite3"), "utf8"), "preserve");
+    await assert.rejects(access(join(storage, "runtime/install.lock")));
+    await writeFile(join(assets, "distribution.json"), JSON.stringify({ mode: "companion", installer_url: "https://example.com/engine" }));
+    await assert.rejects(distribution(assets), /installer link/);
+    await writeFile(join(assets, "distribution.json"), JSON.stringify({ mode: "download" }));
+    await assert.rejects(distribution(assets), /package/);
+  } finally { await rm(root, { recursive: true, force: true }); }
 });
 test("corrupt archive leaves models and indexes untouched and releases the lock", async () => {
   const root = await mkdtemp(join(tmpdir(), "semantic-search-test-"));
@@ -80,4 +98,44 @@ test("a native picker selection adds exclusions without replacing earlier folder
   assert.equal(addExclusionFolders(saved, ["~/Downloads/private"]), saved + "\n~/Downloads/private");
   assert.equal(addExclusionFolders(saved, ["~/Documents/private"]), saved);
   assert.equal(addExclusionFolders(saved, []), saved);
+});
+
+import { fileURLToPath } from "node:url";
+import { createPreviewFiles } from "../src/preview-files";
+
+test("preview files are private, bounded, validated and removed on close", async () => {
+  const root = await mkdtemp(join(tmpdir(), "semantic search preview-"));
+  const image = "data:image/jpeg;base64," + Buffer.from([0xff, 0xd8, 0xff, 0xd9]).toString("base64");
+  try {
+    const cache = await createPreviewFiles(root);
+    const reference = await cache.write(image);
+    const path = fileURLToPath(reference);
+    assert.ok(path.startsWith(join(root, "preview-cache/session-")));
+    assert.equal((await stat(path)).mode & 0o777, 0o600);
+    assert.deepEqual(await readFile(path), Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
+    await assert.rejects(cache.write("file:///private/data.jpg"), /Invalid/);
+    await assert.rejects(cache.write("data:image/jpeg;base64,YmFk"), /JPEG/);
+    await assert.rejects(cache.write("data:image/jpeg;base64," + "A".repeat(8 * 1024 * 1024 + 1)), /Invalid/);
+    await cache.close();
+    await assert.rejects(access(path));
+    await assert.rejects(cache.write(image), /closed/);
+    const stale = join(root, "preview-cache/session-expired");
+    const unrelated = join(root, "preview-cache/preserve");
+    await mkdir(stale); await mkdir(unrelated);
+    await utimes(stale, new Date(0), new Date(0));
+    const next = await createPreviewFiles(root);
+    await assert.rejects(access(stale));
+    await access(unrelated);
+    await next.close();
+    assert.deepEqual(await readdir(join(root, "preview-cache")), ["preserve"]);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("Tinycast keeps its supported inline preview format without writing a cache", async () => {
+ const support = "/unneeded/com.tinycast.app/extension-support/example";
+ const cache = await createPreviewFiles(support);
+ const image = "data:image/jpeg;base64,/9j/2Q==";
+ assert.equal(await cache.write(image), image);
+ await cache.close();
+ await assert.rejects(access(support));
 });

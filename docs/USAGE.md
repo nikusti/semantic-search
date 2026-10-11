@@ -69,7 +69,7 @@ To update the extension, install its newer package. Models and indexes stay in s
 
 ## Privacy and limits
 
-Inference, indexing and previews run locally. Files are not sent to a cloud inference service. Internet access is required for the initial model download; the bundled engine installs offline. The service binds only to loopback and rejects browser-origin requests. Other local processes can access it. Local indexes contain paths and extracted content.
+Inference, indexing and previews run locally. Raycast writes temporary JPEG preview files in its own support folder, removes them on selection changes, and expires interrupted sessions on the next preview request after 15 minutes. Tinycast keeps previews inline. Files are not sent to a cloud inference service. Internet access is required for the initial model download; the bundled engine installs offline. The service binds only to loopback and rejects browser-origin requests. Other local processes can access it. Local indexes contain paths and extracted content.
 
 - Only readable files in your chosen folders are indexed. Apple Photos libraries and remote iCloud-only assets need a dedicated importer, which is not included.
 - Scanned PDFs without an extractable text layer need OCR, which is not included.

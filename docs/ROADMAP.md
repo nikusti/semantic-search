@@ -3,8 +3,8 @@
 ## Next: Store installation
 
 - Keep one engine and UI codebase, with bundled ZIP and small Store packages.
-- Provide an explicit companion-engine installer containing Python and all required libraries. No developer toolchain or terminal steps for users.
-- Verify offline installation, updates, index preservation and both launcher hosts before submission.
+- Native companion installer and small Store source package are implemented for the 0.5.0 preview. Python and required libraries are included; no developer toolchain or terminal steps for users.
+- Offline isolated installation, repeated installation, Store engine discovery and synthetic search pass. Complete final host/update tests and clean-account validation before submission.
 - Complete signing/notarization, Store metadata, screenshots and independent privacy/license review before public distribution.
 
 ## After Store packaging
