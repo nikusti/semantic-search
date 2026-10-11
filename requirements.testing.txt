@@ -1,0 +1,14 @@
+# Synthetic CPU-only tests; do not install inference models or the Metal runtime.
+fastapi==0.143.0
+httpx==0.28.1
+numpy==2.5.3
+pillow==12.3.0
+pypdf==6.20.0
+python-docx==1.2.0
+reportlab==5.0.1
+safetensors==0.8.0
+huggingface-hub==1.33.0
+pytest==9.1.1
+
+av==19.0.1
+pypdfium2==5.14.0

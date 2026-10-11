@@ -1,0 +1,27 @@
+[
+  {
+    "id": "mlx-8bit",
+    "label": "EmbeddingGemma 2 \u00b7 MLX 8-bit",
+    "repo": "mlx-community/embeddinggemma-2-8bit",
+    "revision": "7505ef2f8ddef45efef6d060865f27989b3c9cec",
+    "path": "models/embeddinggemma-2-mlx-8bit",
+    "backend": "mlx",
+    "download_bytes": 1266582143,
+    "recommended": true,
+    "legacy_revision": "7505ef2f8ddef45efef6d060865f27989b3c9cec"
+  },
+  {
+    "id": "coreml-experimental",
+    "label": "EmbeddingGemma 2 \u00b7 Core ML",
+    "repo": "FluidInference/embeddinggemma-2-coreml",
+    "revision": "70fcf18f32c8cffc173fea982d5652d0bd1de8ea",
+    "path": "models/embeddinggemma-2-coreml",
+    "backend": "coreml",
+    "download_bytes": 584746514,
+    "capabilities": {
+      "images": true,
+      "video": true,
+      "audio": true
+    }
+  }
+]

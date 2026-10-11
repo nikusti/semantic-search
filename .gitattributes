@@ -1,0 +1,3 @@
+# Preserve verbatim upstream source-provenance records.
+packaging/codec-notices/ffmpeg.patch -whitespace
+packaging/codec-notices/pkg.py -whitespace

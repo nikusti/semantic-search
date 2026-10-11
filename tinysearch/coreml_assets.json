@@ -1,0 +1,98 @@
+{
+  "repo": "FluidInference/embeddinggemma-2-coreml",
+  "groups": {
+    "text": {
+      "revision": "70fcf18f32c8cffc173fea982d5652d0bd1de8ea",
+      "files": {
+        "config.json": {
+          "sha256": "4ff891a28a5d55562b55ff3aa4ef362968d378629f9453f337cb70a9e1b45f61",
+          "bytes": 1084
+        },
+        "tokenizer.json": {
+          "sha256": "4d777ef5bdc1aa36227abdfb77c3e49e7b9c892d16e1b6bda41c393504828be4",
+          "bytes": 32170510
+        },
+        "embeddings.bf16": {
+          "sha256": "56ebbdbfd706c827f3fae1d97aa39135c7ddc0f1e6d9b12f8565f84bbfbda877",
+          "bytes": 268435456
+        },
+        "EmbeddingGemma2Text.mlpackage/Manifest.json": {
+          "sha256": "83eace80b69b46f8415af620ba1b40d7c490d00f7c00ba9dedd2e29da6e9ac19",
+          "bytes": 617
+        },
+        "EmbeddingGemma2Text.mlpackage/Data/com.apple.CoreML/model.mlmodel": {
+          "sha256": "0df9aca02807cf490db6d4f1c68607a8c7f486ad23b376d1968fd3be5eb14677",
+          "bytes": 7323423
+        },
+        "EmbeddingGemma2Text.mlpackage/Data/com.apple.CoreML/weights/weight.bin": {
+          "sha256": "75b97ab036ca87eae60560c4034a63d604201498dc4b6f6971dd0b1e4558d61f",
+          "bytes": 276815424
+        }
+      }
+    },
+    "vision": {
+      "revision": "3f978ddf92cac9aa07eb2dcf6eb36cf450f3dba4",
+      "files": {
+        "position_embeddings.f16": {
+          "sha256": "17de9480acc23638c0634a97ed89e51ed664433256d7d6f109587dcd91c79124",
+          "bytes": 3145728
+        },
+        "EmbeddingGemma2Vision.mlpackage/Manifest.json": {
+          "sha256": "376afe7b51608637312cd15a0a89b1d7863f9779502aaf5f12fa6b14c4272d8d",
+          "bytes": 617
+        },
+        "EmbeddingGemma2Vision.mlpackage/Data/com.apple.CoreML/model.mlmodel": {
+          "sha256": "0085b5e04a13d000fe5969adeaa13d897f5a3cb7be60c76c8685c023747f89ef",
+          "bytes": 2053174
+        },
+        "EmbeddingGemma2Vision.mlpackage/Data/com.apple.CoreML/weights/weight.bin": {
+          "sha256": "5b5b6dd8d80aa438bf91ba143fbe90d56a2e25bfcf685a56b990aad71cf75232",
+          "bytes": 304078400
+        }
+      }
+    },
+    "audio": {
+      "revision": "3f978ddf92cac9aa07eb2dcf6eb36cf450f3dba4",
+      "files": {
+        "EmbeddingGemma2Audio.mlpackage/Manifest.json": {
+          "sha256": "65c8e9811516e7916a3d742261c7d5a02d4e43c113b437330ce86f98b3da3514",
+          "bytes": 617
+        },
+        "EmbeddingGemma2Audio.mlpackage/Data/com.apple.CoreML/model.mlmodel": {
+          "sha256": "d40896e5c88d62b02d15cc975f27e254c28a5774a1702e09bf5483071623548d",
+          "bytes": 1059089
+        },
+        "EmbeddingGemma2Audio.mlpackage/Data/com.apple.CoreML/weights/weight.bin": {
+          "sha256": "41d7b552caabe376e377dcbe1c8c5f9879853bc4f384a161bb1f886f19e84b56",
+          "bytes": 586817408
+        }
+      }
+    }
+  },
+  "processor": {
+    "repo": "mlx-community/embeddinggemma-2-8bit",
+    "revision": "7505ef2f8ddef45efef6d060865f27989b3c9cec",
+    "files": {
+      "config.json": {
+        "sha256": "35e55812554bf172f9321f5c6a25d58810432db9eeeb38094723a04e8d3dd9af",
+        "bytes": 5463
+      },
+      "tokenizer.json": {
+        "sha256": "4d777ef5bdc1aa36227abdfb77c3e49e7b9c892d16e1b6bda41c393504828be4",
+        "bytes": 32170510
+      },
+      "tokenizer_config.json": {
+        "sha256": "17bd5d6e9364ca49a534e1502076593317c298d4a663623091ed45388f004874",
+        "bytes": 1599
+      },
+      "processor_config.json": {
+        "sha256": "168f6a08522f3ce5dea596d94d003af2fd691742d4f41fe1f9d8cce76bfbf69c",
+        "bytes": 1788
+      },
+      "preprocessor_config.json": {
+        "sha256": "ea2ae257e901064abdd98dceb19f2b0da06af600bed15e0f99f5c85c37ee9d78",
+        "bytes": 511
+      }
+    }
+  }
+}

@@ -1,0 +1,16 @@
+# Store publication planning
+
+Semantic Search is currently distributed through GitHub releases. Publishing a GitHub repository does not publish a Raycast Store extension.
+
+Tinycast enables the [Raycast Store registry](https://tinycast.dev/docs/extensions/installing/) by default and can install its prebuilt extensions. A compatible Store release should therefore be installable from Tinycast too; both hosts still need an installation test.
+
+Raycast publication creates a pull request in [raycast/extensions](https://github.com/raycast/extensions). The Raycast team reviews it and, after acceptance and merge, publishes the extension. See the [publication workflow](https://developers.raycast.com/basics/publish-an-extension).
+
+Before submitting this project:
+
+- Replace the large embedded engine asset with a distribution design meeting Raycast's binary-dependency rules. The guidelines prohibit heavy bundled dependencies and require verifiable sources, builds and integrity checks. A maintainer-controlled binary download is not automatically acceptable.
+- Confirm the Raycast account author, latest supported API, macOS restriction and required metadata. Add the extension README, Store-format changelog and clean screenshots showing synthetic files.
+- Validate the distribution build and test model setup, indexing, cancellation, previews and search in both launchers.
+- Complete the source-history and historical-release licensing review before making the repository public. Current source and newly built binaries do not remove historical files or older release assets.
+
+The full [Store preparation guidelines](https://developers.raycast.com/basics/prepare-an-extension-for-store) determine acceptance. Store submission is a separate step from the ready-to-use ZIP release.

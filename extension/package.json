@@ -1,0 +1,66 @@
+{
+  "name": "semantic-search",
+  "title": "Semantic Search",
+  "description": "Search local documents, photos, video scenes and audio with on-device embeddings.",
+  "icon": "icon.png",
+  "author": "nikusti",
+  "license": "MIT",
+  "commands": [
+    {
+      "name": "semantic-search",
+      "title": "Semantic Search",
+      "description": "Find local files from a natural-language description",
+      "mode": "view",
+      "arguments": [
+        {
+          "name": "query",
+          "type": "text",
+          "placeholder": "Describe a file",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "model-settings",
+      "title": "Semantic Search Model Settings",
+      "description": "Download a local model and configure indexing",
+      "mode": "view"
+    }
+  ],
+  "preferences": [
+    {
+      "name": "serviceURL",
+      "type": "textfield",
+      "title": "Custom Local Service (Optional)",
+      "description": "Leave blank to use the bundled engine. Advanced: connect to your own local service.",
+      "default": "",
+      "required": false
+    }
+  ],
+  "scripts": {
+    "build": "node build.mjs",
+    "check": "tsc --noEmit",
+    "dev": "ray develop",
+    "build:raycast": "ray build",
+    "test": "node test.mjs",
+    "bundle:raycast": "ray bundle"
+  },
+  "dependencies": {
+    "@raycast/api": "2.7.3",
+    "react": "19.3.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12",
+    "typescript": "5.9.3",
+    "@types/react": "19.3.0",
+    "@types/node": "24.19.2"
+  },
+  "version": "0.4.0",
+  "categories": [
+    "Productivity",
+    "Utilities"
+  ],
+  "platforms": [
+    "macOS"
+  ]
+}

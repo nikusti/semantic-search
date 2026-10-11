@@ -1,0 +1,6 @@
+{
+  "python_url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261009/cpython-3.12.15%2B20261009-aarch64-apple-darwin-install_only_stripped.tar.gz",
+  "python_sha256": "233f8e15255b3e1d1fd47ea5dd5230dfed803f371138e896e54d98c60ae19f6f",
+  "python_version": "3.12.15",
+  "platform": "darwin-arm64"
+}
