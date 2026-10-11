@@ -48,12 +48,20 @@ async function prepareStartupCache(path: string, finalPath: string, progress?: O
     "-s", path, "-p", finalPath, join(path, "python/lib/python3.12")], { timeout: 120_000 });
   await writeFile(marker, "1", { mode: 0o600 });
 }
+async function prepareModelStartup(path: string, options: Options) {
+  options.progress?.("Checking installed model startup…");
+  // Usually a quick marker check. A new bridge or OS build warms downloaded
+  // Core ML text functions before the service becomes interactive, offline.
+  await execute(join(path, "python/bin/python3.12"), ["-I", "-B", "-m", "tinysearch.coreml_assets",
+    "--storage", options.storage], { timeout: 660_000 });
+}
 export async function installRuntime(options: Options, manifest: RuntimeManifest) {
   validateManifest(manifest);
   const parent = join(options.storage, "runtime");
   const destination = join(parent, manifest.version);
   if (await installed(destination, manifest)) {
     await prepareStartupCache(destination, destination, options.progress);
+    await prepareModelStartup(destination, options);
     return destination;
   }
   await mkdir(parent, { recursive: true, mode: 0o700 });
@@ -84,6 +92,7 @@ export async function installRuntime(options: Options, manifest: RuntimeManifest
     await access(join(staging, "python/bin/python3.12"));
     await execute(join(staging, "python/bin/python3.12"), ["-I", "-B", "-c", "import tinysearch, av, pypdfium2, fastapi; assert tinysearch.__version__ == '" + manifest.version + "'"], { timeout: 30_000 });
     await prepareStartupCache(staging, destination, options.progress);
+    await prepareModelStartup(staging, options);
     await writeFile(join(staging, "installed.json"), JSON.stringify(manifest), { mode: 0o600 });
     // Only a failed installation of this exact runtime version is replaceable.
     await rm(destination, { recursive: true, force: true });

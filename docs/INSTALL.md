@@ -4,7 +4,7 @@ You need an Apple silicon Mac running macOS 26 or newer. No terminal, Homebrew, 
 
 ## Tinycast
 
-1. Download `semantic-search-v0.4.0.zip` from the GitHub release and extract it.
+1. Download `semantic-search-v0.4.1.zip` from the GitHub release and extract it.
 2. In Tinycast, open **Settings → Extensions → Install → Add from folder**.
 3. Select the extracted **Semantic Search** folder, containing `package.json`.
 4. Open **Semantic Search Model Settings**. The first launch prepares the bundled engine automatically.
@@ -16,7 +16,7 @@ Leave **Custom Local Service** blank. The extension starts its own engine when n
 
 ## Raycast
 
-1. Download and extract the same `semantic-search-v0.4.0.zip`.
+1. Download and extract the same `semantic-search-v0.4.1.zip`.
 2. Move the extracted **Semantic Search** folder to a permanent location.
 3. Run **Import Extension** in Raycast and choose that folder.
 4. Raycast may show generic developer instructions to run npm. This package is already built, so skip those instructions.

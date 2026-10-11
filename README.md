@@ -1,7 +1,7 @@
 <p align="center"><img src="extension/assets/icon.png" width="88" alt="Semantic Search icon"></p>
 <h1 align="center">Semantic Search</h1>
 <p align="center">Find local files by what you remember.<br>Documents, photos, video scenes and audio — on your Mac.</p>
-<p align="center"><a href="https://github.com/nikusti/semantic-search/releases/tag/v0.4.0">Download</a> · <a href="#installation">Install</a> · <a href="#models-and-storage">Models & storage</a> · <a href="CHANGELOG.md">Version history</a> · <a href="docs/DEVELOPMENT.md">Develop</a></p>
+<p align="center"><a href="https://github.com/nikusti/semantic-search/releases/tag/v0.4.1">Download</a> · <a href="#installation">Install</a> · <a href="#models-and-storage">Models & storage</a> · <a href="CHANGELOG.md">Version history</a> · <a href="docs/DEVELOPMENT.md">Develop</a></p>
 
 Describe a file in natural language, preview the match, and open the original. Semantic Search runs locally and shares its engine, models and indexes between **Tinycast and Raycast**.
 
@@ -13,7 +13,7 @@ You need an **Apple silicon Mac with macOS 26 or newer**, Tinycast or a compatib
 
 ### Tinycast
 
-1. [Download the latest release](https://github.com/nikusti/semantic-search/releases/tag/v0.4.0): choose **`semantic-search-v0.4.0.zip`** and extract it.
+1. [Download the latest release](https://github.com/nikusti/semantic-search/releases/tag/v0.4.1): choose **`semantic-search-v0.4.1.zip`** and extract it.
 2. In Tinycast, open **Settings → Extensions → Install → Add from folder** and choose the extracted **Semantic Search** folder.
 3. Open **Semantic Search Model Settings**. The engine prepares itself on the first launch.
 4. Use **Folders to Search** to choose the folders you want to search.
@@ -24,7 +24,7 @@ Leave **Custom Local Service** blank. It is an optional setting for developers u
 
 ### Raycast
 
-1. Download and extract the same **`semantic-search-v0.4.0.zip`**.
+1. Download and extract the same **`semantic-search-v0.4.1.zip`**.
 2. Run **Import Extension** in Raycast and select the extracted **Semantic Search** folder.
 3. The package is already built. The generic developer welcome screen may suggest npm commands; **you can skip those**.
 4. Open **Semantic Search Model Settings**, choose folders in **Folders to Search**, and press **Download & Apply**.
@@ -73,7 +73,7 @@ The release page lists the engine archive size. The bundled runtime needs additi
 
 Both launchers use this same folder. The engine starts when a command is opened; no terminal or login startup item is required. A lightweight parent service remains running. Inference workers unload after **one minute** of inactivity after leaving search; indexing and in-flight work prevent premature unloading.
 
-Version 0.4.0 adds [EmbeddingGemma 2 · Core ML](https://huggingface.co/FluidInference/embeddinggemma-2-coreml). It uses the same model architecture through Apple's Core ML runtime, with its own separately generated index. Text input is limited to 512 tokens, so document chunks are at most 480 tokens; audio uses windows up to 10 seconds and video uses 3 frames. Text search loads neither visual nor audio encoders. Optional Core ML encoders download when enabled. First installation also prepares Core ML for the current Mac, which can take longer than subsequent launches.
+[EmbeddingGemma 2 · Core ML](https://huggingface.co/FluidInference/embeddinggemma-2-coreml) uses the same model architecture through Apple's Core ML runtime, with its own separately generated index. Text input is limited to 512 tokens, so document chunks are at most 480 tokens; audio uses windows up to 10 seconds and video uses 3 frames. Text search loads neither visual nor audio encoders. Optional Core ML encoders download when enabled. Setup prepares all text functions once; searches then load only the function needed for their input length. Normal restarts reuse preparation. This startup optimization preserves existing Core ML indexes and does not change MLX.
 
 **Actions → Delete Selected Model** unloads and removes its weights while preserving indexes and original files. Re-download the same model/revision to reuse its index. Different model weights normally require a new index; matching vector lengths do not make models interchangeable.
 
@@ -116,6 +116,6 @@ Inference, indexing and previews run locally. Files are not sent to a cloud infe
 
 See [Troubleshooting](docs/TROUBLESHOOTING.md), [Development](docs/DEVELOPMENT.md), [Changelog](CHANGELOG.md) and [Store publication planning](docs/STORE.md).
 
-Application source is [MIT-licensed](LICENSE). Complete native dependency sources and build recipes are available as the `semantic-search-native-sources-v0.4.0.zip` release asset; see [native licenses and source](packaging/codec-notices/README.md). Bundled libraries and model weights retain their upstream licenses; third-party notices and dependency license files accompany the installed runtime. See the [model card](https://huggingface.co/mlx-community/embeddinggemma-2-8bit), [Google's guide](https://ai.google.dev/gemma/docs/embeddinggemma/inference-embeddinggemma-with-sentence-transformers), [MLX-VLM](https://github.com/Blaizzy/mlx-vlm), [portable Python](https://github.com/astral-sh/python-build-standalone), [PyAV](https://github.com/PyAV-Org/PyAV) and [PDFium](https://github.com/pypdfium2-team/pypdfium2).
+Application source is [MIT-licensed](LICENSE). Complete native dependency sources and build recipes are available as the `semantic-search-native-sources-v0.4.1.zip` release asset; see [native licenses and source](packaging/codec-notices/README.md). Bundled libraries and model weights retain their upstream licenses; third-party notices and dependency license files accompany the installed runtime. See the [model card](https://huggingface.co/mlx-community/embeddinggemma-2-8bit), [Google's guide](https://ai.google.dev/gemma/docs/embeddinggemma/inference-embeddinggemma-with-sentence-transformers), [MLX-VLM](https://github.com/Blaizzy/mlx-vlm), [portable Python](https://github.com/astral-sh/python-build-standalone), [PyAV](https://github.com/PyAV-Org/PyAV) and [PDFium](https://github.com/pypdfium2-team/pypdfium2).
 
 Maintainers: stage only source and run `python scripts/check_release.py` before committing. CI audits source and runs synthetic tests and builds. Runtime binaries, configs, databases, models and personal examples stay outside Git history.

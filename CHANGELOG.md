@@ -2,6 +2,12 @@
 
 The complete published version history is kept here. Earlier installation archives are retired from this repository; use the latest release. Dates are in UTC.
 
+## [0.4.1] - 2026-10-11
+
+- Core ML loads only the text function needed for a query, retaining all supported input lengths and the original packed document batch processing.
+- Prepare every text function once during model setup or runtime installation, before interactive search. Preparation is refreshed after native bridge or OS updates and reused across normal restarts.
+- Preserve existing Core ML vectors, index identities, optional media encoders and one-minute idle unloading. MLX inference is unchanged.
+
 ## [0.4.0] - 2026-10-11
 
 - Core ML is available in Model Settings, with verified model downloads and support for text, photos, video scenes and audio. Optional encoders download when enabled; audio loads only for sound indexing.

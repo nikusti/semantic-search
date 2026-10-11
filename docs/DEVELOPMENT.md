@@ -67,9 +67,9 @@ npm ci --ignore-scripts
 npm run check
 npm test
 npm run build
-npm run bundle:raycast -- -o ../../semantic-search-v0.4.0.rayext
+npm run bundle:raycast -- -o ../../semantic-search-v0.4.1.rayext
 cd ..
-python scripts/package_release.py --raycast ../semantic-search-v0.4.0.rayext
+python scripts/package_release.py --raycast ../semantic-search-v0.4.1.rayext
 ```
 
 The runtime build also requires Xcode Command Line Tools (Swift, clang, make and pkg-config). It compiles the Core ML bridge and rebuilds PyAV against LGPL-only FFmpeg; `--no-deps` intentionally omits unused GPL codec wheels. Complete native dependency source archives and build recipes accompany binary releases.
@@ -89,5 +89,15 @@ The launcher installs the embedded runtime once and starts a detached local Pyth
 The parent service remains available while inference workers load on demand and exit after inactivity. Query/session activation loads text only, preserving the configured index identity. An image/video operation replaces that worker with a combined text/vision worker. During a pinned indexing pass it is reused for text and vision, then released; a query outside indexing returns to text-only. Previous workers exit before replacement. The audio worker is loaded only for indexing sound. Bounded decoder subprocesses use the bundled PyAV/FFmpeg libraries and PDFium, with operation timeouts. The HTTP API accepts loopback requests and rejects browser origins.
 
 The Core ML bridge source is in `native/coreml`; vendor code retains its Apache-2.0 license and provenance. Verified pinned Core ML artifacts and processor files are listed in `tinysearch/coreml_assets.json`. Media has bounded input sizes: at most 10 seconds per audio window, 3 video frames and 512 input tokens. MLX and Core ML have separate vector spaces. Model profiles restore each backend's settings; index reuse compares model revision, dimensions and chunk pipeline before copying unchanged vectors.
+
+Core ML text functions load on demand: single inputs select `embed_32`, `embed_48`, `embed_64`, `embed_128`, `embed_256` or `embed_512`; document batches retain the original `pack_256` inputs and ordering. Each function is cached until its worker exits. Model setup explicitly warms all seven functions with predictions. Runtime installation and service startup also check existing downloaded text assets offline. Preparation markers include model revisions, the helper checksum and OS build, so ordinary restarts reuse specialization. This loading change does not alter vector or index identity. MLX follows its existing loading path.
+
+Maintainers can verify native text-vector parity against a previous bridge without downloading weights:
+
+```sh
+python scripts/check_coreml_inference.py --model /path/to/coreml-assets --helper /path/to/new-bridge --baseline-helper /path/to/previous-bridge
+```
+
+This optional macOS check exercises all six text lengths and mixed packed document batches using synthetic text. Keep model assets and local benchmark output outside Git.
 
 Core ML storage and index identity also include a hash of the complete text/vision/audio/processor manifest. Updated artifacts receive separate model folders and indexes, including updates that leave the text model revision unchanged. Existing experimental Core ML folders predating this manifest require a one-time verified migration or new index; they are preserved. The optional `reference` source extra installs the old PyTorch comparison backend. It is omitted from ready packages; Torch remains for upstream media preprocessing, while inference uses MLX or Core ML.

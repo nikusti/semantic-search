@@ -1,8 +1,46 @@
 // Derived from FluidInference/FluidUse (Apache-2.0), commit
 // 0230049c4e81f8de53ae1086b20cd9106c511105. See vendor/LICENSE and NOTICE.md.
-// Modified: explicit local assets and multimodal feature inputs.
+// Modified: explicit local assets, multimodal feature inputs, and lazy function loading.
 @preconcurrency import CoreML
 import Foundation
+
+/// Serialize and deduplicate loads while allowing concurrent predictions on cached models.
+private actor TextFunctionCache {
+    let url: URL
+    let computeUnits: MLComputeUnits
+    private var models: [String: MLModel] = [:]
+    private var pending: [String: Task<MLModel, Error>] = [:]
+
+    init(url: URL, computeUnits: MLComputeUnits) {
+        self.url = url
+        self.computeUnits = computeUnits
+    }
+
+    func model(_ name: String) async throws -> MLModel {
+        if let model = models[name] { return model }
+        if let task = pending[name] { return try await task.value }
+        let url = self.url
+        let computeUnits = self.computeUnits
+        let task = Task {
+            let configuration = MLModelConfiguration()
+            configuration.computeUnits = computeUnits
+            configuration.functionName = name
+            return try await MLModel.load(contentsOf: url, configuration: configuration)
+        }
+        pending[name] = task
+        do {
+            let model = try await task.value
+            models[name] = model
+            pending[name] = nil
+            return model
+        } catch {
+            pending[name] = nil
+            throw error
+        }
+    }
+
+    func loadedNames() -> [String] { models.keys.sorted() }
+}
 
 /// EmbeddingGemma 2 text embeddings on Core ML. The package holds fixed-shape functions sharing one set of weights,
 /// so each stays on the Neural Engine: `embed_<S>` for one text of up to S tokens, and `pack_256`, which runs up to
@@ -17,15 +55,13 @@ public final class EmbeddingGemma2Manager: Sendable {
     public static let packSlots = 8
 
     public let tokenizer: EmbeddingGemma2Tokenizer
-    private let models: [Int: MLModel]
-    private let packModel: MLModel?
+    private let functions: TextFunctionCache
     private let table: Data
     private let embedScale = Float(hiddenSize).squareRoot()
 
-    init(tokenizer: EmbeddingGemma2Tokenizer, models: [Int: MLModel], packModel: MLModel?, table: Data) {
+    private init(tokenizer: EmbeddingGemma2Tokenizer, functions: TextFunctionCache, table: Data) {
         self.tokenizer = tokenizer
-        self.models = models
-        self.packModel = packModel
+        self.functions = functions
         self.table = table
     }
 
@@ -72,17 +108,23 @@ public final class EmbeddingGemma2Manager: Sendable {
         }
         let tokenizer = try EmbeddingGemma2Tokenizer(
             tokenizerJsonURL: directory.appendingPathComponent("tokenizer.json"))
-        func function(_ name: String) async throws -> MLModel {
-            let configuration = MLModelConfiguration()
-            configuration.computeUnits = computeUnits
-            configuration.functionName = name
-            return try await MLModel.load(contentsOf: modelURL, configuration: configuration)
-        }
-        var models: [Int: MLModel] = [:]
-        for length in lengths { models[length] = try await function("embed_\(length)") }
         return EmbeddingGemma2Manager(
-            tokenizer: tokenizer, models: models, packModel: try await function("pack_256"), table: table)
+            tokenizer: tokenizer, functions: TextFunctionCache(url: modelURL, computeUnits: computeUnits), table: table)
     }
+
+    /// Specialize every text function once during setup, including an actual prediction.
+    /// Runtime workers load only the functions requested by their inputs.
+    public func prepare() async throws {
+        for length in Self.lengths {
+            _ = try await run(length: length, count: 2) { destination in
+                writeEmbeddings([bosId, eosId] + [Int32](repeating: tokenizer.padId, count: length - 2),
+                                to: destination)
+            }
+        }
+        _ = try await embedPacked([[bosId, eosId], [bosId, eosId]])
+    }
+
+    public func loadedFunctionNames() async -> [String] { await functions.loadedNames() }
 
     /// Embeddings for many texts, in order. Texts that fit are packed eight to a 256-token call; up to
     /// `maxInFlight` calls run concurrently (Core ML's async prediction is thread-safe).
@@ -99,7 +141,7 @@ public final class EmbeddingGemma2Manager: Sendable {
         var current: [Int] = []
         var used = 0
         for (index, ids) in tokenized.enumerated() {
-            guard packModel != nil, ids.count <= Self.packLength else {
+            guard ids.count <= Self.packLength else {
                 singles.append(index)
                 continue
             }
@@ -141,7 +183,7 @@ public final class EmbeddingGemma2Manager: Sendable {
 
     /// One `pack_256` call for up to eight token sequences that fit in 256 tokens together.
     private func embedPacked(_ sequences: [[Int32]]) async throws -> [[Float]] {
-        guard let packModel else { throw EmbeddingGemma2Error.predictionFailed("no packed function") }
+        let packModel = try await functions.model("pack_256")
         let length = Self.packLength
         let embeds = try MLMultiArray(
             shape: [1, NSNumber(value: length), NSNumber(value: Self.hiddenSize)], dataType: .float16)
@@ -268,7 +310,7 @@ public final class EmbeddingGemma2Manager: Sendable {
     private func run(
         length: Int, count: Int, fill: (UnsafeMutablePointer<Float16>) throws -> Void
     ) async throws -> [Float] {
-        guard let model = models[length] else { throw EmbeddingGemma2Error.predictionFailed("no model for \(length)") }
+        let model = try await functions.model("embed_\(length)")
         let embeds = try MLMultiArray(
             shape: [1, NSNumber(value: length), NSNumber(value: Self.hiddenSize)], dataType: .float16)
         let mask = try MLMultiArray(shape: [1, NSNumber(value: length)], dataType: .float16)

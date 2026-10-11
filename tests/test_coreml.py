@@ -65,6 +65,7 @@ def test_new_revision_compiles_fresh_target_and_prepares_again(tmp_path,monkeypa
     manifest={'repo':'test/model','groups':{'text':{'revision':'new','files':{'EmbeddingGemma2Text.mlpackage/weights.bin':{'bytes':len(data),'sha256':sha256(data).hexdigest()}}}},'processor':{'repo':'test/processor','revision':'p','files':{}}}
     monkeypatch.setattr(assets,'MANIFEST',manifest)
     monkeypatch.setattr(assets,'helper_path',lambda _:tmp_path/'helper')
+    (tmp_path/'helper').write_bytes(b'native bridge')
     model=tmp_path/'model';model.mkdir()
     old=model/'EmbeddingGemma2Text.mlmodelc';old.mkdir();(old/'revision').write_text('old')
     (model/'.verified-text').write_text('old');(model/'.prepared-text').write_text('old')
@@ -78,9 +79,49 @@ def test_new_revision_compiles_fresh_target_and_prepares_again(tmp_path,monkeypa
             target=__import__('pathlib').Path(args[2])/'EmbeddingGemma2Text.mlmodelc'
             assert not target.exists()
             target.mkdir();(target/'revision').write_text('new')
+        return __import__('subprocess').CompletedProcess(args,0,stdout=__import__('json').dumps({
+            'event':'prepared','text_functions':['pack_256', *[f'embed_{n}' for n in (32,48,64,128,256,512)]]}))
     monkeypatch.setattr(assets.subprocess,'run',run)
     assets.ensure_assets(path=model,groups=['text'])
     assert (old/'revision').read_text()=='new'
-    assert len(calls)==2 and (model/'.prepared-text').read_text().strip()=='new'
+    assert len(calls)==2 and calls[1][-1]=='prepare-search'
+    assert (model/'.prepared-text').read_text().strip()==assets.preparation_key(tmp_path/'helper','text')
     assets.ensure_assets(path=model,groups=['text'])
     assert len(calls)==2
+
+
+def test_preparation_survives_restart_but_repeats_after_bridge_or_os_update(tmp_path, monkeypatch):
+    import json
+    import subprocess
+    import tinysearch.coreml_assets as assets
+    helper=tmp_path/'helper';helper.write_bytes(b'first bridge')
+    model=tmp_path/'model';model.mkdir()
+    (model/'.prepared-text').write_text(assets.MANIFEST['groups']['text']['revision'])
+    calls=[]
+    def run(args, **kwargs):
+        calls.append(args)
+        return subprocess.CompletedProcess(args,0,stdout=json.dumps({
+            'event':'prepared','text_functions':['pack_256', *[f'embed_{n}' for n in (32,48,64,128,256,512)]]}))
+    monkeypatch.setattr(assets.subprocess,'run',run)
+    monkeypatch.setattr(assets.platform,'version',lambda:'first OS build')
+    assets.prepare_assets(model,helper,['text'])
+    assets.prepare_assets(model,helper,['text'])
+    assert len(calls)==1  # Legacy marker upgraded once; new process/reboot has the same key.
+    helper.write_bytes(b'updated bridge')
+    assets.prepare_assets(model,helper,['text'])
+    assert len(calls)==2
+    monkeypatch.setattr(assets.platform,'version',lambda:'updated OS build')
+    assets.prepare_assets(model,helper,['text'])
+    assert len(calls)==3
+
+
+def test_failed_or_incomplete_preparation_is_not_cached(tmp_path, monkeypatch):
+    import subprocess
+    import tinysearch.coreml_assets as assets
+    helper=tmp_path/'helper';helper.write_bytes(b'bridge')
+    def run(args,**kwargs):
+        return subprocess.CompletedProcess(args,0,stdout='{"event":"ready"}')
+    monkeypatch.setattr(assets.subprocess,'run',run)
+    with pytest.raises(RuntimeError,match='did not complete'):
+        assets.prepare_assets(tmp_path,helper,['text'])
+    assert not (tmp_path/'.prepared-text').exists()

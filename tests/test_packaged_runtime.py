@@ -33,7 +33,7 @@ def test_first_launch_has_no_selected_files_and_preserves_existing_configuration
     repeated=initial_config(storage,8877)
     assert repeated.roots==(root,) and config.source_path.read_bytes()==saved
     with TestClient(create_app(repeated,FakeEngine())) as client:
-        assert client.get('/v1/info').json()==dict(application='semantic-search',version='0.4.0',protocol=1)
+        assert client.get('/v1/info').json()==dict(application='semantic-search',version=__import__('tinysearch').__version__,protocol=1)
         assert client.get('/v1/settings').json()['current']['roots']==[str(root)]
 
 

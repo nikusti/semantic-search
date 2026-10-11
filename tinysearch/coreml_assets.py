@@ -2,6 +2,7 @@
 from hashlib import sha256
 import json
 from pathlib import Path
+import platform
 import shutil
 import subprocess
 import sys
@@ -41,6 +42,49 @@ def _file(root, repo, revision, entry):
     finally:
         temporary.unlink(missing_ok=True)
 
+def preparation_key(helper, group):
+    # Specialization depends on the native bridge and OS as well as the weights.
+    # A normal reboot leaves this identity unchanged. Never use it as an index identity.
+    identity = {
+        'format': 2,
+        'text_revision': MANIFEST['groups']['text']['revision'],
+        'group_revision': MANIFEST['groups'][group]['revision'],
+        'helper_sha256': sha256(helper.read_bytes()).hexdigest(),
+        'os_build': platform.version(),
+        'architecture': platform.machine(),
+    }
+    return sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
+
+def prepare_assets(path, helper, groups):
+    for group in groups:
+        prepared = path / ('.prepared-' + group)
+        key = preparation_key(helper, group)
+        if prepared.is_file() and prepared.read_text().strip() == key:
+            continue
+        mode = {'text':'search', 'vision':'index', 'audio':'audio'}[group]
+        # Loading a lazy worker alone does not specialize its functions. Setup
+        # explicitly predicts through all six text shapes and the packed batch.
+        result = subprocess.run([str(helper), str(path), str(path), 'prepare-' + mode],
+                                text=True, capture_output=True, check=True, timeout=600)
+        reply = json.loads(result.stdout)
+        expected = {'pack_256', *(f'embed_{n}' for n in (32, 48, 64, 128, 256, 512))}
+        if reply.get('event') != 'prepared' or set(reply.get('text_functions', [])) != expected:
+            raise RuntimeError('Core ML startup preparation did not complete')
+        temporary = prepared.with_suffix('.tmp')
+        temporary.write_text(key + '\n')
+        temporary.replace(prepared)
+
+def prepare_installed_text(storage):
+    """Prepare downloaded Core ML text assets during a runtime upgrade, offline."""
+    from .model_source import resolve_source
+    catalog = json.loads(Path(__file__).with_name('model_catalog.json').read_text())
+    for entry in catalog:
+        if entry['backend'] != 'coreml':
+            continue
+        path = storage / resolve_source(storage, catalog, entry['id'])['path']
+        if ready(path):
+            prepare_assets(path, helper_path(path), ['text'])
+
 def ensure_assets(config=None, *, path=None, groups=None):
     if config is not None:
         path = config.model_path
@@ -77,12 +121,11 @@ def ensure_assets(config=None, *, path=None, groups=None):
     processor = MANIFEST['processor']
     for name, entry in processor['files'].items():
         _file(path / 'processor', processor['repo'], processor['revision'], {'path':name, **entry})
-    for group in groups or ['text']:
-        prepared = path / ('.prepared-' + group)
-        if prepared.is_file() and prepared.read_text().strip() == MANIFEST['groups'][group]['revision']: continue
-        mode = {'text':'search', 'vision':'index', 'audio':'audio'}[group]
-        # Hardware specialization belongs to setup, before the first interactive search.
-        subprocess.run([str(helper), str(path), str(path), mode], input='', text=True,
-                       capture_output=True, check=True, timeout=600)
-        prepared.write_text(MANIFEST['groups'][group]['revision'] + '\n')
+    prepare_assets(path, helper, groups or ['text'])
+
+if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser(description='Prepare installed Core ML text functions offline')
+    parser.add_argument('--storage', type=Path, required=True)
+    prepare_installed_text(parser.parse_args().storage)
 

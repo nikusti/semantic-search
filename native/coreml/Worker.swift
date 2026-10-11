@@ -39,19 +39,26 @@ struct Desc:Decodable{let inputs:[String:Item];struct Item:Decodable{let shape:[
    reply(["compiled":true]);return
   }
   guard args.count == 4 else { throw EmbeddingGemma2Error.invalidAsset("Expected model, media and worker mode") }
+  let preparing=args[3].hasPrefix("prepare-")
+  let mode=preparing ? String(args[3].dropFirst("prepare-".count)):args[3]
+  guard ["search","index","audio"].contains(mode) else { throw EmbeddingGemma2Error.invalidAsset("Unknown worker mode") }
   let assets=URL(fileURLWithPath:args[1]);let media=URL(fileURLWithPath:args[2]);let start=monotonic()
   let text=try await EmbeddingGemma2Manager.load(from:assets)
   var vision:[Int:MLModel]=[:];var positions:[Float]=[]
-  if args[3]=="index" {
+  if mode=="index" {
    positions=try Data(contentsOf:media.appendingPathComponent("position_embeddings.f16")).withUnsafeBytes{$0.bindMemory(to:Float16.self).map(Float.init)}
    for budget in [70,140,280]{let cfg=MLModelConfiguration();cfg.computeUnits = .cpuAndGPU;cfg.functionName="vision_\(budget)";vision[budget]=try await MLModel.load(contentsOf:media.appendingPathComponent("EmbeddingGemma2Vision.mlmodelc"),configuration:cfg)}
   }
   var audio:MLModel?=nil
-  if args[3]=="audio" {
+  if mode=="audio" {
    let cfg=MLModelConfiguration();cfg.computeUnits = .cpuAndGPU
    audio=try await MLModel.load(contentsOf:media.appendingPathComponent("EmbeddingGemma2Audio.mlmodelc"),configuration:cfg)
   }
-  reply(["event":"ready","load_seconds":monotonic()-start,"memory":memory(),"vision_loaded":!vision.isEmpty])
+  if preparing {
+   try await text.prepare()
+   reply(["event":"prepared","seconds":monotonic()-start,"text_functions":await text.loadedFunctionNames()]);return
+  }
+  reply(["event":"ready","load_seconds":monotonic()-start,"memory":memory(),"vision_loaded":!vision.isEmpty,"text_functions":await text.loadedFunctionNames()])
   while let line=readLine(){
    do {
     let req=try JSONSerialization.jsonObject(with:Data(line.utf8)) as! [String:Any];let op=req["op"] as! String;let t=monotonic()
@@ -105,7 +112,7 @@ struct Desc:Decodable{let inputs:[String:Item];struct Item:Decodable{let shape:[
      guard ids.filter({$0==placeholder}).count*512==allFeatures.count else{throw EmbeddingGemma2Error.predictionFailed("Visual feature count mismatch")}
      vectors=[normalized(try await text.embedMultimodal(ids:ids,features:allFeatures,placeholder:placeholder))]
     }else{throw EmbeddingGemma2Error.predictionFailed("unknown request")}
-    reply(["vectors":vectors,"seconds":monotonic()-t,"memory":memory()])
+    reply(["vectors":vectors,"seconds":monotonic()-t,"memory":memory(),"text_functions":await text.loadedFunctionNames()])
    }catch{reply(["error":String(describing:error),"memory":memory()])}
   }
  }

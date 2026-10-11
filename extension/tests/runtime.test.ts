@@ -31,7 +31,8 @@ test("an installed runtime is reused without unpacking or needing the archive", 
   try {
     const runtime = join(storage, "runtime", manifest.version);
     await mkdir(join(runtime, "python/bin"), { recursive: true });
-    await writeFile(join(runtime, "python/bin/python3.12"), "existing");
+    await writeFile(join(runtime, "python/bin/python3.12"), "#!/bin/sh\nexit 0\n");
+    await chmod(join(runtime, "python/bin/python3.12"), 0o755);
     await writeFile(join(runtime, "installed.json"), JSON.stringify(manifest));
     await writeFile(join(runtime, ".startup-cache-ready"), "1");
     assert.equal(await installRuntime({ assets: "/unneeded", storage }, manifest), runtime);
@@ -52,8 +53,9 @@ test("an installed runtime prepares its local startup cache once and preserves u
     await writeFile(executable, `#!${process.execPath}\nrequire('node:fs').appendFileSync(${JSON.stringify(log)},JSON.stringify(process.argv.slice(2))+'\\n');\n`);
     await chmod(executable, 0o755);
     for (let i = 0; i < 2; i++) assert.equal(await installRuntime({ assets: "/unneeded", storage }, manifest), runtime);
-    assert.equal((await readFile(log, "utf8")).trim().split("\n").length, 1);
-    assert.ok(JSON.parse((await readFile(log, "utf8")).trim()).includes("compileall"));
+    const calls = (await readFile(log, "utf8")).trim().split("\n").map(line => JSON.parse(line) as string[]);
+    assert.equal(calls.filter(args => args.includes("compileall")).length, 1);
+    assert.equal(calls.filter(args => args.includes("tinysearch.coreml_assets")).length, 2);
     assert.equal(await readFile(join(runtime, ".startup-cache-ready"), "utf8"), "1");
     assert.equal(await readFile(join(storage, "data/index.sqlite3"), "utf8"), "preserve");
     assert.equal(await readFile(join(storage, "models/weights"), "utf8"), "preserve");
