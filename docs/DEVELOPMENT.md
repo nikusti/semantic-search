@@ -101,3 +101,15 @@ python scripts/check_coreml_inference.py --model /path/to/coreml-assets --helper
 This optional macOS check exercises all six text lengths and mixed packed document batches using synthetic text. Keep model assets and local benchmark output outside Git.
 
 Core ML storage and index identity also include a hash of the complete text/vision/audio/processor manifest. Updated artifacts receive separate model folders and indexes, including updates that leave the text model revision unchanged. Existing experimental Core ML folders predating this manifest require a one-time verified migration or new index; they are preserved. The optional `reference` source extra installs the old PyTorch comparison backend. It is omitted from ready packages; Torch remains for upstream media preprocessing, while inference uses MLX or Core ML.
+
+## Release review checklist
+
+After every release, review the repository description, README, installation guide, usage/model options, troubleshooting, Store status and roadmap against the shipped code. Update stale claims before announcing the release. Keep the README short; detailed behavior belongs in linked guides.
+
+- Verify version numbers and download links with `python scripts/check_documentation.py`.
+- Audit intended tracked/staged source with `python scripts/check_release.py`; inspect the actual archives as well. Never use personal library data in documentation, screenshots or tests committed to Git.
+- Confirm privacy/network behavior, supported models and their separate index identities. Preserve upstream license notices and matching native source archives.
+- Run the relevant service, native and extension checks and a fresh package installation. Record remaining limitations; do not describe planned features as shipped.
+- Before public distribution, complete an independent privacy/license review of source, history and release assets, plus Store requirements and installer signing checks.
+
+CI runs documentation checks on changes and again when a GitHub release is published. Automated checks supplement this review; they do not judge every prose claim.

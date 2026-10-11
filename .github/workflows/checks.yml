@@ -20,6 +20,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: python scripts/check_release.py
+      - run: python scripts/check_documentation.py
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: python -m pip install -r requirements.testing.txt
       - run: python -m pytest -q
