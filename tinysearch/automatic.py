@@ -8,8 +8,8 @@ import uuid
 
 from .launcher import owner_alive, external_power
 
-INTERVALS = {3600, 10800, 21600, 86400}
-DEFAULTS = {'enabled': False, 'interval_seconds': 10800, 'only_on_power': True,
+INTERVALS = {1800, 3600, 10800, 21600, 86400}
+DEFAULTS = {'enabled': False, 'interval_seconds': 3600, 'only_on_power': True,
             'paused': False, 'pending_resume': False, 'in_progress': False,
             'last_started_at': None, 'last_completed_at': None,
             'last_error': None, 'last_reason': 'disabled', 'failures': 0, 'revision': 0,
@@ -50,7 +50,7 @@ class AutomaticIndexing:
         for key in ('enabled', 'only_on_power', 'paused', 'pending_resume', 'in_progress'):
             if key in values and type(values[key]) is not bool:
                 raise ValueError('Invalid automatic indexing setting')
-        interval = values.get('interval_seconds', 10800)
+        interval = values.get('interval_seconds', 3600)
         if type(interval) is not int or interval not in INTERVALS:
             raise ValueError('Choose a supported automatic update interval')
         for key in ('last_started_at', 'last_completed_at'):

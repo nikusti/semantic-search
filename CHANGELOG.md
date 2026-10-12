@@ -4,7 +4,7 @@ The complete published version history is kept here. Earlier installation archiv
 
 ## [0.7.0] - Unreleased
 
-- Add opt-in incremental background updates with 1/3/6/24-hour schedules and an external-power condition; off by default.
+- Add opt-in incremental background updates with 30-minute and 1/3/6/24-hour schedules (1 hour by default) and an external-power condition; off by default.
 - Add persistent pause/resume and cancellation, retain completed files after interruption, and stop launcher-owned jobs when their launcher exits or extension is removed.
 - Share scheduling between Tinycast and Raycast and prevent overlapping passes. Keep background checks short; engine/model installation and Core ML preparation remain foreground operations.
 - Preserve unsaved settings during background activation, support compatible custom local services, and retain existing model/vector/index identities.

@@ -329,3 +329,36 @@ def test_disabling_images_with_video_enabled_changes_content_without_losing_save
         assert client.get('/v1/status').json()['files']==2
         assert {r['kind'] for r in client.post('/v1/search',json={'query':'photo'}).json()['results']}=={'document','image'}
         assert client.post('/v1/index').json()['unchanged']==2
+
+
+def test_moved_subfolder_is_hidden_before_sync_and_pruned_while_trash_still_exists(tmp_path):
+    config,engine=library(tmp_path)
+    root=config.roots[0]
+    nested=root/'nested';nested.mkdir()
+    note=nested/'note.txt';note.write_text('Synthetic discarded content')
+    with TestClient(create_app(config,engine)) as client:
+        assert client.post('/v1/index').status_code==200
+        trash=tmp_path/'synthetic-trash';trash.mkdir()
+        nested.rename(trash/'nested')
+        assert (trash/'nested/note.txt').is_file()
+        assert all(r['path']!=str(note) for r in client.post('/v1/search',json={'query':'content'}).json()['results'])
+        assert client.app.state.store.db.execute('SELECT 1 FROM files WHERE path=?',(str(note),)).fetchone()
+        result=client.post('/v1/index').json()
+        assert result['deleted']==1
+        assert not client.app.state.store.db.execute('SELECT 1 FROM files WHERE path=?',(str(note),)).fetchone()
+        assert (trash/'nested/note.txt').is_file()
+
+
+def test_unavailable_whole_source_is_retained_until_explicit_cleanup(tmp_path):
+    config,engine=library(tmp_path)
+    root=config.roots[0]
+    trash=tmp_path/'synthetic-trash';trash.mkdir()
+    with TestClient(create_app(config,engine)) as client:
+        root.rename(trash/'a')
+        result=client.post('/v1/index').json()
+        assert result['errors'] and result['deleted']==0
+        assert client.app.state.store.db.execute('SELECT count(*) FROM files').fetchone()[0]==1
+        assert not client.post('/v1/search',json={'query':'content'}).json()['results']
+        removed=client.post('/v1/folders/remove',json={'path':str(root),'delete_saved_index':True})
+        assert removed.status_code==200 and removed.json()['deleted_entries']==1
+        assert (trash/'a/entry.txt').is_file()

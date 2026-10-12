@@ -19,7 +19,7 @@ export type AutomaticStatus = AutomaticPreferences & {
 };
 export const automaticDefaults: AutomaticStatus = {
   enabled: false,
-  interval_seconds: 10800,
+  interval_seconds: 3600,
   only_on_power: true,
   paused: false,
   revision: 0,

@@ -497,3 +497,71 @@ def test_resuming_idle_scheduler_does_not_restart_a_completed_manual_scan_on_bat
     assert not app.state.settings.thread.is_alive()
     assert app.state.engine.calls==calls
     assert automatic.tick(OWNER)['state']=='waiting_for_power'
+
+
+@pytest.mark.parametrize('interval',[1800,3600])
+def test_short_intervals_and_overdue_restart_do_not_reset_the_wait(service,interval):
+    client,app,root=service
+    automatic=app.state.settings.automatic
+    assert automatic.status()['interval_seconds']==3600
+    now=[1_000_000.]
+    automatic.clock=lambda:now[0]
+    (root/'note.txt').write_text('A synthetic note')
+    enable(client,interval_seconds=interval)
+    assert automatic.tick(OWNER)['state']=='indexing'
+    settle(app)
+    now[0]+=interval*1.5
+    recovered=AutomaticIndexing(app.state.settings,clock=automatic.clock,probe=lambda owner:True,power=lambda:True)
+    assert recovered.status()['interval_seconds']==interval
+    assert recovered.tick(OWNER)['state']=='indexing'
+    settle(app)
+
+
+def test_removed_retained_source_is_not_updated_by_scheduled_passes(service):
+    client,app,root=service
+    sibling=root.parent/'other-source'
+    sibling.mkdir()
+    saved=sibling/'saved.txt';saved.write_text('Original synthetic content')
+    (root/'active.txt').write_text('Active source content')
+    client.post('/v1/folders/add',json={'paths':[str(sibling)]})
+    client.post('/v1/index/start',json={});settle(app)
+    old=app.state.store.db.execute('SELECT vector FROM chunks WHERE path=?',(str(saved),)).fetchone()[0]
+    reply=client.post('/v1/folders/remove',json={'path':str(sibling),'delete_saved_index':False})
+    assert reply.status_code==200 and reply.json()['deleted_entries']==0
+    saved.write_text('Changed retained content that must not be processed')
+    (sibling/'new.txt').write_text('Must not be indexed')
+    automatic=app.state.settings.automatic
+    enable(client,interval_seconds=1800)
+    assert automatic.tick(OWNER,force=True)['state']=='indexing'
+    settle(app)
+    assert app.state.store.status()['files']==1
+    assert app.state.store.status()['retained_files']==1
+    assert app.state.store.db.execute('SELECT vector FROM chunks WHERE path=?',(str(saved),)).fetchone()[0]==old
+    assert not app.state.store.db.execute('SELECT 1 FROM files WHERE path=?',(str(sibling/'new.txt'),)).fetchone()
+    assert all(r['path'].startswith(str(root)+'/') for r in client.post('/v1/search',json={'query':'content'}).json()['results'])
+
+
+def test_scheduled_pass_updates_every_active_folder_and_enabled_photos(service,monkeypatch):
+    from dataclasses import replace
+    from test_photos import library as photos_fixture
+    client,app,root=service
+    library=photos_fixture.__wrapped__(root.parent,monkeypatch)
+    app.state.engine.image=lambda path:app.state.engine.document(path.read_bytes().hex())
+    config=replace(app.state.store.config,enable_photos_library=True)
+    config.save();app.state.store.config=config
+    sibling=root.parent/'other-source';sibling.mkdir()
+    (root/'a.txt').write_text('Initial source one')
+    (sibling/'b.txt').write_text('Initial source two')
+    client.post('/v1/folders/add',json={'paths':[str(sibling)]})
+    automatic=app.state.settings.automatic
+    enable(client,interval_seconds=1800)
+    assert automatic.tick(OWNER,force=True)['state']=='indexing';settle(app)
+    assert app.state.store.status()['files']==5
+    (root/'a.txt').write_text('Updated source one')
+    (sibling/'new.txt').write_text('New source two')
+    library.rows.append({**library.rows[0],'id':'new-photo/L0/001','name':'Another.jpg'})
+    assert automatic.tick(OWNER,force=True)['state']=='indexing';settle(app)
+    summary=app.state.store.status()['last_index_summary']
+    assert summary['added']==2 and summary['updated']==1
+    assert app.state.store.status()['files']==7
+    assert app.state.store.status()['photos_library']['indexed']==4

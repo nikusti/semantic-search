@@ -181,6 +181,7 @@ export function useAutomaticSettings(
               }))
             }
           >
+            <Form.Dropdown.Item value="1800" title="30 minutes" />
             <Form.Dropdown.Item value="3600" title="1 hour" />
             <Form.Dropdown.Item value="10800" title="3 hours" />
             <Form.Dropdown.Item value="21600" title="6 hours" />

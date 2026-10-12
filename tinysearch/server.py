@@ -69,7 +69,7 @@ class IndexRequest(BaseModel):
 
 class AutomaticRequest(BaseModel):
     enabled: bool
-    interval_seconds: Literal[3600,10800,21600,86400] = 10800
+    interval_seconds: Literal[1800,3600,10800,21600,86400] = 3600
     only_on_power: bool = True
     launcher: LauncherOwner | None = None
 
