@@ -13,7 +13,7 @@
 
 Version 0.6.0 includes the native PhotoKit importer for photographs and videos, optional iCloud downloads, incremental updates/cancellation, bounded temporary files and previews, full-resolution clipboard copying and creation dates. Both MLX and Core ML use the shared scene/soundtrack pipeline. Partial video soundtracks can be retried without rebuilding completed scenes. Text searches use saved vectors without loading media encoders.
 
-Independent source review, isolated installer tests with both models, a real 1,000-photo/50-video comparison and a complete library import with 100 retrieval queries have been completed locally. Phone-video orientation, cancellation, exclusions, originals preservation and index-preserving model deletion are covered by regressions. Version 0.6.0 installation packages include these changes. The Store submission is being updated to the matching 0.6.4 companion payload and shared launcher UI.
+Independent source review, isolated installer tests with both models, a real 1,000-photo/50-video comparison and a complete library import with 100 retrieval queries have been completed locally. Phone-video orientation, cancellation, exclusions, originals preservation and index-preserving model deletion are covered by regressions. Version 0.6.0 installation packages include these changes. The Store submission targets the matching published 0.6.4 companion payload and shared launcher UI.
 
 ### Incremental indexing improvements — released in 0.6.2
 
@@ -31,4 +31,4 @@ Independent backend and launcher reviewers reproduced settings-request races, re
 
 Version 0.7.0 is planned to use opt-in background commands supported by both launchers, without a separate LaunchAgent. Keep one incremental engine, charging/schedule conditions, pause/resume/cancel, and manual Update Search Index. Automatic jobs must stop when their launcher exits or their extension is removed, recover from sleep/restart using committed entries, and avoid duplicate work across hosts.
 
-Automatic indexing remains queued. The Store submission is being updated to the published 0.6.4 companion release. Continue handling reviewer feedback in the existing PR.
+Automatic indexing remains queued. The Store submission targets the published 0.6.4 companion release. Automated checks and human review remain separate acceptance steps. Continue handling reviewer feedback in the existing PR.
