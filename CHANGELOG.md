@@ -2,6 +2,13 @@
 
 The complete published version history is kept here. Earlier installation archives are retired from this repository; use the latest release. Dates are in UTC.
 
+## [0.7.0] - Unreleased
+
+- Add opt-in incremental background updates with 1/3/6/24-hour schedules and an external-power condition; off by default.
+- Add persistent pause/resume and cancellation, retain completed files after interruption, and stop launcher-owned jobs when their launcher exits or extension is removed.
+- Share scheduling between Tinycast and Raycast and prevent overlapping passes. Keep background checks short; engine/model installation and Core ML preparation remain foreground operations.
+- Preserve unsaved settings during background activation, support compatible custom local services, and retain existing model/vector/index identities.
+
 ## [0.6.5] - 2026-10-12
 
 - Prefer photos over video scenes within a 0.03 cosine-similarity margin in All Files. Preserve stronger video matches, raw scores, document/audio positions, best-segment timestamps and explicit content filters; existing vectors need no rebuilding.

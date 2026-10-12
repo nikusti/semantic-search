@@ -8,6 +8,15 @@ import threading
 from .settings import Settings
 
 
+class LauncherOwner(BaseModel):
+    pid: int = Field(gt=1)
+    started: str = Field(min_length=1,max_length=128)
+    executable: str = Field(min_length=1,max_length=4096)
+    host: Literal['Tinycast','Raycast']
+    extension_path: str = Field(min_length=1,max_length=4096)
+    extension_marker: str = Field(min_length=1,max_length=128)
+
+
 class SearchRequest(BaseModel):
     query: str = Field(min_length=1, max_length=2000)
     kind: Literal["all", "image", "document", "video", "audio"] = "all"
@@ -20,6 +29,7 @@ class PreviewRequest(BaseModel):
     start_seconds: float = Field(default=0, ge=0, le=86400, allow_inf_nan=False)
 
 class SettingsRequest(BaseModel):
+    launcher: LauncherOwner | None = None
     model_variant: Literal['reference','mlx-bf16','mlx-8bit','mlx-4bit','custom','coreml-experimental']
     model_url: str = Field(default='',max_length=2048)
     dimensions: Literal[128,256,512,768] = 768
@@ -55,6 +65,16 @@ class ExclusionsRequest(BaseModel):
 
 class IndexRequest(BaseModel):
     retry_skipped: bool = False
+    launcher: LauncherOwner | None = None
+
+class AutomaticRequest(BaseModel):
+    enabled: bool
+    interval_seconds: Literal[3600,10800,21600,86400] = 10800
+    only_on_power: bool = True
+    launcher: LauncherOwner | None = None
+
+class AutomaticTick(BaseModel):
+    launcher: LauncherOwner
 
 class FolderAddRequest(BaseModel):
     paths: list[str] = Field(min_length=1,max_length=100)
@@ -80,6 +100,12 @@ def create_app(config, engine=None, request_stop=None):
                     app.state.engine.close()
 
     app = FastAPI(title="Semantic Search", lifespan=lifespan)
+
+    def launcher_owner(body):
+        owner = body.launcher.model_dump() if body and body.launcher else None
+        if owner is not None and not app.state.settings.automatic.probe(owner):
+            raise HTTPException(422,'The launcher or extension is no longer running')
+        return owner
 
     def require_model():
         config = app.state.store.config
@@ -143,22 +169,27 @@ def create_app(config, engine=None, request_stop=None):
         try:
             with operation_lock:
                 require_model()
+                owner = launcher_owner(body)
                 if app.state.settings.job['state'] in {'downloading','applying','indexing','cancelling'} or getattr(app.state,'manual_index',False):
                     raise RuntimeError('Wait for model settings to finish')
                 app.state.manual_index=True
                 owned=True
                 import time
-                app.state.settings.job={'state':'indexing','started_at':time.time(),'error':None}
-            with app.state.engine.pin() if hasattr(app.state.engine, "pin") else nullcontext():
-                result=app.state.store.index(retry_skipped=True) if body and body.retry_skipped else app.state.store.index()
-                return result
+                app.state.settings.job={'state':'indexing','started_at':time.time(),'error':None,'origin':'manual'}
+                job = app.state.settings.job
+            with app.state.settings.automatic.guard(owner,False,job):
+                with app.state.engine.pin() if hasattr(app.state.engine, "pin") else nullcontext():
+                    result=app.state.store.index(retry_skipped=True) if body and body.retry_skipped else app.state.store.index()
+                    return result
         except RuntimeError as error:
             raise HTTPException(409, str(error)) from error
         finally:
             if owned:
-                with operation_lock, app.state.settings.job_lock:
-                    app.state.manual_index=False
-                    app.state.settings.job.update(state='cancelled' if result and result.get('cancelled') else 'complete' if result is not None else 'error',finished_at=time.time())
+                with operation_lock:
+                    app.state.settings.automatic.completed(job,result)
+                    with app.state.settings.job_lock:
+                        app.state.manual_index=False
+                        job.update(state='paused' if result and result.get('paused') else 'cancelled' if result and result.get('cancelled') else 'complete' if result is not None else 'error',finished_at=time.time())
 
     @app.post("/v1/session")
     def session():
@@ -173,7 +204,7 @@ def create_app(config, engine=None, request_stop=None):
     @app.post('/v1/settings')
     def change_settings(body: SettingsRequest):
         try:
-            with operation_lock: return app.state.settings.apply(body.model_dump())
+            with operation_lock: return app.state.settings.apply(body.model_dump(exclude={'launcher'}), owner=launcher_owner(body))
         except ValueError as error: raise HTTPException(422,str(error)) from error
         except RuntimeError as error: raise HTTPException(409,str(error)) from error
 
@@ -290,14 +321,57 @@ def create_app(config, engine=None, request_stop=None):
 
     @app.post("/v1/index/cancel")
     def cancel_index():
-        return app.state.settings.cancel_index()
+        with operation_lock:
+            return app.state.settings.cancel_index()
 
     @app.post("/v1/index/start")
     def start_index(body: IndexRequest | None = None):
         try:
             with operation_lock:
                 require_model()
-                return app.state.settings.start_index(retry_skipped=bool(body and body.retry_skipped))
+                return app.state.settings.start_index(retry_skipped=bool(body and body.retry_skipped), owner=launcher_owner(body))
+        except ValueError as error:
+            raise HTTPException(422,str(error)) from error
+        except RuntimeError as error:
+            raise HTTPException(409,str(error)) from error
+
+    @app.get('/v1/automatic')
+    def automatic_status():
+        return app.state.settings.automatic.status()
+
+    @app.post('/v1/automatic')
+    def configure_automatic(body: AutomaticRequest):
+        try:
+            with operation_lock:
+                return app.state.settings.automatic.configure(body.enabled,body.interval_seconds,body.only_on_power,launcher_owner(body))
+        except ValueError as error:
+            raise HTTPException(422,str(error)) from error
+
+    @app.post('/v1/automatic/tick')
+    def automatic_tick(body: AutomaticTick):
+        try:
+            with operation_lock:
+                scheduler = app.state.settings.automatic
+                if scheduler.status()['enabled']:
+                    try:
+                        require_model()
+                    except HTTPException:
+                        return scheduler.not_ready('Download the selected model in Manage Library')
+                return scheduler.tick(launcher_owner(body))
+        except ValueError as error:
+            raise HTTPException(422,str(error)) from error
+
+    @app.post('/v1/index/pause')
+    def pause_index():
+        with operation_lock:
+            return app.state.settings.automatic.pause()
+
+    @app.post('/v1/index/resume')
+    def resume_index(body: IndexRequest | None = None):
+        try:
+            with operation_lock:
+                require_model()
+                return app.state.settings.automatic.resume(launcher_owner(body))
         except ValueError as error:
             raise HTTPException(422,str(error)) from error
         except RuntimeError as error:

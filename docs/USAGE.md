@@ -89,3 +89,19 @@ Inference, indexing and previews run locally. Raycast writes temporary JPEG prev
 
 
 See [Installation](INSTALL.md), [Troubleshooting](TROUBLESHOOTING.md) and [Development](DEVELOPMENT.md).
+
+## Automatic updates — 0.7.0 preview
+
+This feature is implemented on the development branch and is not part of the published 0.6.5 release yet.
+
+In **Manage Library**, enable **Update the index in the background**, choose 1, 3, 6 or 24 hours, and save. **Only while connected to power** is on by default. Automatic updates are off by default; manual **Update Search Index** remains available.
+
+Each launcher checks the shared schedule about every 15 minutes. A check starts an incremental engine job and returns immediately; it does not wait for a long import. Timing is approximate and the launcher may defer checks. The selected model uses its existing index: unchanged files reuse vectors, changed/new files are saved as they finish, and missing files are removed. Temporary failures retain their retry delay; there is no separate timer retrying them between passes.
+
+The first explicit run activates native background checks in that launcher. Saving automatic settings does this when there are no other unsaved edits. Otherwise, save or discard those edits and choose **Activate Background Checks** in Actions. Run that action once after reinstalling the extension or when enabling checks in a second launcher. Both launchers share settings and the engine prevents overlapping passes.
+
+**Pause Indexing** stops at a safe boundary and releases model workers. Wait for the pause to finish, then **Resume Indexing**. Completed files are retained across engine restarts; an unfinished file can be processed again. **Cancel Indexing** discards the current continuation and leaves completed files searchable. Automatic updates can run again at the next interval.
+
+Closing a launcher window does not interrupt indexing. Fully quitting the owning launcher or removing/updating its extension stops its job. Automatic work also pauses when external power is required but unavailable. After a normal Mac sleep, the job can continue on wake if its owner and power condition still hold. After a process crash or reboot, a subsequent authorized launcher check resumes from committed files. No LaunchAgent, login item or independent scheduling service is installed.
+
+A background check never installs or upgrades the engine, downloads a missing model or runs initial Core ML preparation. If preparation is needed after an update, open Search once. The same controls work with a compatible Custom Local Service; its own settings remain authoritative. Advanced console jobs without a launcher owner remain independent of launcher lifetime.

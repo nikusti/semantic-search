@@ -28,7 +28,7 @@ def main():
     shutil.copyfile(source / 'assets/runtime-manifest.json', output / 'assets/runtime-manifest.json')
     (output / 'assets/distribution.json').write_text(json.dumps(dict(mode='companion',
         installer_url=f'https://github.com/nikusti/semantic-search/releases/tag/v{version}'), indent=2) + '\n')
-    package['commands'] = [entry for entry in package['commands'] if entry['name'] == 'semantic-search']
+    package['commands'] = [entry for entry in package['commands'] if entry['name'] in {'semantic-search','automatic-index'}]
     package['description'] = 'Find local documents, photos, video scenes and sounds by meaning. Requires the Semantic Search Engine.'
     package['preferences'][0]['description'] = 'Leave blank to use the installed Semantic Search Engine. Advanced: connect to your own local service.'
     package['scripts'] = dict(build='ray build', dev='ray develop', lint='ray lint', publish='ray publish', test='node scripts/test.mjs')
@@ -56,6 +56,8 @@ MLX 8-bit and Core ML are supported; each model keeps a separate index. Text que
 **Update Search Index** adds new/changed files and removes missing files. Add Search Folders keeps existing sources. Remove a Folder hides saved entries by default, with optional index cleanup. Folder additions preserve existing vectors; removals and exclusions can be saved during indexing. Deleting a model preserves indexes and originals. Engine data is stored in `~/Library/Application Support/Semantic Search/`.
 
 Apple Photos is optional: enable the source in Manage Library, connect it in Actions and allow macOS access. Enable iCloud downloads to include media missing locally. Both models support photographs, video scenes and optional soundtracks. Originals stay in Photos; saved vectors and small thumbnails are retained locally. Photo results show creation dates, open in Photos and offer full-resolution **Copy Photo**. Apple controls its own Photos download cache.
+
+Automatic updates are optional and off by default. Manage Library offers 1/3/6/24-hour schedules, an external-power condition and pause/resume. Short launcher checks start incremental work without waiting for a long scan. Closing the window is fine; quitting the owning launcher or removing its extension stops the job. Completed files are reused. No LaunchAgent is installed. Run **Activate Background Checks** once in each launcher after enabling updates or reinstalling.
 
 The engine listens only on loopback, rejects browser origins, and is accessible to other local processes. Audio search matches sounds, not transcripts.
 

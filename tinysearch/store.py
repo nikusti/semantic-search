@@ -35,6 +35,9 @@ class IndexPathExcluded(Exception):
 class IndexCancelled(Exception):
     """Stop at a safe boundary, preserving all completed files."""
 
+class IndexPaused(IndexCancelled):
+    """Release indexing workers; continuation reuses committed files."""
+
 class PhotosImportPaused(RuntimeError):
     """Stop a library pass without deleting its unvisited entries."""
 
@@ -86,6 +89,7 @@ class Store:
         self.lock = threading.RLock()
         self.index_lock = threading.Lock()
         self.cancel_requested = threading.Event()
+        self.pause_requested = threading.Event()
         self.preview_lock = threading.RLock()
         self.progress = None
         self.db.executescript("""
@@ -186,8 +190,12 @@ class Store:
     def cancel_index(self):
         self.cancel_requested.set()
 
+    def pause_index(self):
+        self.pause_requested.set()
+
     def _check_cancelled(self):
         if self.cancel_requested.is_set(): raise IndexCancelled()
+        if self.pause_requested.is_set(): raise IndexPaused()
 
     def _save_thumbnail(self, path, jpeg):
         self.db.execute('INSERT OR REPLACE INTO thumbnails VALUES (?,?)', (str(path), jpeg))
@@ -585,6 +593,9 @@ class Store:
             if self.config.enable_photos_library and (self.config.enable_images or self._enabled('video')):
                 self._index_photos(summary, failure_policy, retry_skipped)
             return summary
+        except IndexPaused:
+            summary['paused'] = True
+            return summary
         except IndexCancelled:
             summary['cancelled'] = True
             return summary
@@ -605,6 +616,7 @@ class Store:
                             self.engine.release_vision()
                 finally:
                     self.cancel_requested.clear()
+                    self.pause_requested.clear()
                     self.index_lock.release()
 
     def _photo_enabled(self, file_kind):
@@ -620,7 +632,7 @@ class Store:
                     self.db.executemany('INSERT OR REPLACE INTO thumbnail_specs VALUES (?,?,?)', legacy_specs)
                 legacy_specs.clear()
         try:
-            with photos.PhotoLibrary(self.cancel_requested.is_set, progress) as library:
+            with photos.PhotoLibrary(lambda: self.cancel_requested.is_set() or self.pause_requested.is_set(), progress) as library:
                 self.progress.update(source='photos', phase='scanning')
                 inventory = library.assets()
                 seen = {photos.asset_path(asset['id']) for asset in inventory}

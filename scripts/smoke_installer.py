@@ -49,6 +49,7 @@ def main():
     parser.add_argument('--work', type=Path, required=True, help='A new, empty test directory')
     parser.add_argument('--models-copy-from', type=Path, help='Already downloaded built-in models; copied, never modified')
     parser.add_argument('--port', type=int, default=18791)
+    parser.add_argument('--launcher-owner-report', type=Path, help='Local native launcher probe report for optional automatic-indexing checks')
     args = parser.parse_args()
     if not 1024 <= args.port <= 65535: raise SystemExit('Use an unoccupied local test port')
     with socket.socket() as probe:
@@ -149,6 +150,18 @@ for name, entry in MANIFEST['processor']['files'].items():
     try:
         start()
         assert request('status')['files'] == 0
+        launcher_owner = None
+        if args.launcher_owner_report:
+            from hashlib import sha256
+            launcher_owner = json.loads(args.launcher_owner_report.read_text())['owner']
+            # Only a synthetic extension marker is changed during this test.
+            extension = work / 'launcher-extension'
+            extension.mkdir()
+            package = json.dumps({'name':'semantic-search'}).encode()
+            (extension / 'package.json').write_bytes(package)
+            identity = extension.stat()
+            launcher_owner.update(extension_path=str(extension), extension_marker=f'{identity.st_dev}:{identity.st_ino}:'+sha256(package).hexdigest())
+            assert not request('automatic')['enabled'], 'New installations must be opt-in'
         backend_reports = []
         for variant in ('mlx-8bit', 'coreml-experimental'):
             settings = request('settings')
@@ -212,7 +225,50 @@ for name, entry in MANIFEST['processor']['files'].items():
             request('index/start', {}); settle()
             assert request('status')['last_index_summary']['unchanged'] == 4
             assert request('status')['last_index_summary']['indexed'] == 0
-            backend_reports.append({'model': variant, 'search_seconds': elapsed, 'files': 4, 'vectors': before})
+            automatic_report = None
+            if launcher_owner:
+                request('automatic', {'enabled':True,'interval_seconds':3600,'only_on_power':False,'launcher':launcher_owner})
+                assert request('automatic/tick',{'launcher':launcher_owner})['state']=='scheduled'
+                request('index/pause',{})
+                assert request('automatic')['paused']
+                request('index/resume',{'launcher':launcher_owner})
+                assert not request('automatic')['paused']
+                assert not request('status')['indexing']
+                (fixtures / 'automatic-note.txt').write_text('A parcel shipping label checklist: print the address and tracking barcode before mailing the package.')
+                stop()
+                state_file = storage / 'automatic-indexing.json'
+                saved = json.loads(state_file.read_text())
+                saved['last_started_at'] = None  # Advance the isolated scheduler to its due state.
+                state_file.write_text(json.dumps(saved))
+                start()
+                assert request('automatic')['enabled'] and not request('status')['indexing']
+                started = time.monotonic()
+                assert request('automatic/tick',{'launcher':launcher_owner})['state']=='indexing'
+                launch_seconds = round(time.monotonic()-started,3)
+                assert launch_seconds < 2, 'A scheduled check must not wait for full indexing'
+                assert request('automatic/tick',{'launcher':launcher_owner})['state'] in {'busy','scheduled'}
+                settle()
+                assert request('status')['files']==5
+                assert request('status')['last_index_summary']['unchanged']==4
+                assert request('status')['last_index_summary']['added']==1
+                assert request('search',{'query':'parcel shipping label','limit':8})['results'][0]['name']=='automatic-note.txt'
+                stop(); start()
+                assert request('automatic/tick',{'launcher':launcher_owner})['state']=='scheduled'
+                extension = Path(launcher_owner['extension_path'])
+                moved = extension.with_name('removed-launcher-extension')
+                extension.rename(moved)
+                try:
+                    try: request('automatic/tick',{'launcher':launcher_owner})
+                    except urllib.error.HTTPError as error: assert error.code==422
+                    else: raise AssertionError('Removed extension was allowed to schedule work')
+                finally: moved.rename(extension)
+                request('automatic',{'enabled':False})
+                (fixtures / 'automatic-note.txt').unlink()
+                request('index/start',{}); settle()
+                assert request('status')['files']==4
+                automatic_report = {'start_seconds':launch_seconds,'preferences_restart':True,'due_update':True,'unchanged_reuse':True,'removed_extension_rejected':True,'disabled_after_test':True}
+                print(f'{variant}: installed automatic scheduling, pause/resume, restart and extension removal checks passed.',flush=True)
+            backend_reports.append({'model': variant, 'search_seconds': elapsed, 'files': 4, 'vectors': before, 'automatic':automatic_report})
             print(f'{variant}: search/previews, cumulative/offline sources, removal/cleanup, image/video switches and unchanged reuse passed.', flush=True)
         if args.models_copy_from: assert len(backend_reports) == 2, 'Both built-in model copies must be available'
         report['backends'] = backend_reports

@@ -91,6 +91,8 @@ class Settings:
         from .index_reuse import historical_profiles
         saved = self.storage/'model-profiles.json'
         self.profiles = json.loads(saved.read_text()) if saved.is_file() else historical_profiles(app.state.store.config, CATALOG)
+        from .automatic import AutomaticIndexing
+        self.automatic = AutomaticIndexing(self)
 
     @property
     def storage(self):
@@ -125,7 +127,7 @@ class Settings:
                     if report.is_file(): job['report_path'] = str(report)
         pending = self.storage/'folder-cleanup.json'
         if pending.is_file(): job['folder_cleanup_pending'] = len(json.loads(pending.read_text()))
-        return {'models':models,'current':current,'profiles':dict(self.profiles),'job':job,'folders':self.app.state.store.folder_counts(),'storage_path':str(self.storage),'video_supported':True,'audio_supported':True,'media_decoder_available':decoder_available(config),'storage_by_kind':self.app.state.store.storage_by_kind()}
+        return {'models':models,'current':current,'profiles':dict(self.profiles),'job':job,'automatic':self.automatic.status(),'folders':self.app.state.store.folder_counts(),'storage_path':str(self.storage),'video_supported':True,'audio_supported':True,'media_decoder_available':decoder_available(config),'storage_by_kind':self.app.state.store.storage_by_kind()}
 
     def update_folders(self, roots):
         with self.job_lock:
@@ -225,7 +227,7 @@ class Settings:
             return not self.thread.is_alive()
         return True
 
-    def apply(self,values):
+    def apply(self,values,owner=None):
         current = self.app.state.store.config
         folder_only = values.get('roots') is not None and all(
             key == 'roots' or value is None or (key == 'model_url' and current.model_variant != 'custom') or
@@ -264,10 +266,11 @@ class Settings:
         if not config.source_path: raise ValueError('A saved config is required')
         with self.job_lock:
             if self.job['state'] in {'downloading','applying'}: raise RuntimeError('A settings operation is already running')
+            if self.thread and self.thread.is_alive(): raise RuntimeError('Wait for the current operation to finish')
             if self.job['state'] in {'indexing','cancelling'} or self.app.state.store.index_lock.locked() or getattr(self.app.state,'manual_index',False): raise RuntimeError('Cancel indexing or wait for it to finish before switching models')
             entry = resolve_source(self.storage, CATALOG, config.model_variant, config.model_url)
             self.job={'state':'applying' if downloaded(entry,self.storage) else 'downloading','started_at':time.time(),'error':None}
-            self._start(self._run, config)
+            self._start(self._run, config, owner)
         return dict(self.job)
 
     def update_exclusions(self, paths):
@@ -313,7 +316,7 @@ class Settings:
     def download_model(self, variant, url=''):
         entry = resolve_source(self.storage, CATALOG, variant, url)
         with self.job_lock:
-            if self.job['state'] in {'downloading','applying','indexing','cancelling'} or self.app.state.store.index_lock.locked() or getattr(self.app.state,'manual_index',False):
+            if self.job['state'] in {'downloading','applying','indexing','cancelling'} or self.app.state.store.index_lock.locked() or getattr(self.app.state,'manual_index',False) or (self.thread and self.thread.is_alive()):
                 raise RuntimeError('Wait for the current operation to finish')
             if downloaded(entry,self.storage):
                 return {'state':'downloaded','model':entry['id']}
@@ -336,7 +339,7 @@ class Settings:
         if raw_path.is_symlink() or path.parent != (self.storage/'models').resolve():
             raise ValueError('Only model folders in shared storage can be deleted')
         with self.job_lock, self.lock:
-            if self.job['state'] in {'downloading','applying','indexing','cancelling'} or self.app.state.store.index_lock.locked() or getattr(self.app.state,'manual_index',False):
+            if self.job['state'] in {'downloading','applying','indexing','cancelling'} or self.app.state.store.index_lock.locked() or getattr(self.app.state,'manual_index',False) or (self.thread and self.thread.is_alive()):
                 raise RuntimeError('Wait for the current operation to finish')
             if not path.exists():
                 return {'state':'deleted','freed_bytes':0}
@@ -355,40 +358,73 @@ class Settings:
             self.job={'state':'deleted','model':entry['id'],'active_model_removed':active,'freed_bytes':size,'finished_at':time.time()}
             return dict(self.job)
 
-    def start_index(self, retry_skipped=False):
+    def start_index(self, retry_skipped=False, owner=None, automatic=False):
         if not self.app.state.store.config.roots and not self.app.state.store.config.enable_photos_library:
             raise ValueError("Choose folders in Model Settings before updating the index")
         with self.job_lock:
-            if self.job['state'] in {'downloading','applying','indexing','cancelling'} or getattr(self.app.state,'manual_index',False) or self.app.state.store.index_lock.locked():
+            if self.job['state'] in {'downloading','applying','indexing','cancelling'} or getattr(self.app.state,'manual_index',False) or self.app.state.store.index_lock.locked() or (self.thread and self.thread.is_alive()):
                 raise RuntimeError('An indexing or settings operation is already running')
-            self.job={'state':'indexing','started_at':time.time(),'error':None}
-            self._start(self._index_current, retry_skipped)
+            if automatic:
+                from .worker import ManagedEngine
+                config = self.app.state.store.config
+                if isinstance(self.app.state.engine, ManagedEngine) and not downloaded(resolve_source(self.storage, CATALOG, config.model_variant, config.model_url), self.storage):
+                    raise ValueError('Download the selected model before enabling automatic updates')
+            self.job={'state':'indexing','started_at':time.time(),'error':None,'origin':'automatic' if automatic else 'manual'}
+            self._start(self._index_current, retry_skipped, owner, automatic)
         return dict(self.job)
 
     def cancel_index(self):
+        # Keep the job transition and persisted continuation atomic with ticks.
+        with self.automatic.lock:
+            cancelled = None
+            continuation = self.automatic.status()['continuation_origin']
+            with self.job_lock:
+                if (self.job['state'] == 'paused' or (self.job['state'] == 'idle' and continuation)) and not (self.thread and self.thread.is_alive()):
+                    if self.job['state'] == 'idle':
+                        self.job['origin'] = continuation
+                    self.job.update(state='cancelled',interrupt_reason='cancelled')
+                    cancelled = dict(self.job)
+                elif self.job['state'] not in {'indexing','cancelling'} and not self.app.state.store.index_lock.locked():
+                    return {'state':'idle'}
+                else:
+                    self.app.state.store.cancel_index()
+                    self.job.update(state='cancelling',interrupt_reason='cancelled')
+                    return dict(self.job)
+            self.automatic.completed(cancelled, {'cancelled': True})
+            return cancelled
+
+    def pause_index(self):
         with self.job_lock:
             if self.job['state'] not in {'indexing','cancelling'} and not self.app.state.store.index_lock.locked():
-                return {'state':'idle'}
-            self.app.state.store.cancel_index()
-            self.job.update(state='cancelling')
+                return dict(self.job)
+            if self.job['state'] != 'cancelling':
+                self.app.state.store.pause_index()
+                self.job.update(pausing=True,interrupt_reason='paused')
             return dict(self.job)
 
-    def _index_current(self, retry_skipped=False):
+    def _index_current(self, retry_skipped=False, owner=None, automatic=False):
+        result = None
+        failure = None
+        job = self.job
         try:
-            with self.app.state.engine.pin() if hasattr(self.app.state.engine,'pin') else nullcontext():
-                result=self.app.state.store.index(retry_skipped=True) if retry_skipped else self.app.state.store.index()
+            with self.automatic.guard(owner, automatic, job):
+                with self.app.state.engine.pin() if hasattr(self.app.state.engine,'pin') else nullcontext():
+                    result=self.app.state.store.index(retry_skipped=True) if retry_skipped else self.app.state.store.index()
             report=self.storage/'data'/'reports'/f'index-{time.time_ns()}.json'
             report.parent.mkdir(parents=True,exist_ok=True)
             report.write_text(json.dumps(result,ensure_ascii=False,indent=2))
             report.chmod(0o600)
             with self.app.state.store.lock, self.app.state.store.db:
                 self.app.state.store.db.execute("INSERT OR REPLACE INTO meta VALUES ('last_index_report',?)", (report.name,))
-            self.job.update(state='cancelled' if result.get('cancelled') else 'complete',finished_at=time.time(),index_errors=len(result['errors']),
+            self.job.update(state='paused' if result.get('paused') else 'cancelled' if result.get('cancelled') else 'complete',pausing=False,finished_at=time.time(),index_errors=len(result['errors']),
                             report_path=str(report),storage_by_kind=self.app.state.store.storage_by_kind())
         except Exception as error:
+            failure = error
             self.job.update(state='error',error=str(error),finished_at=time.time())
+        finally:
+            self.automatic.completed(job,result,failure)
 
-    def _run(self,config):
+    def _run(self,config,owner=None):
         candidate_engine=candidate_store=None
         try:
             entry=resolve_source(storage_root(config), CATALOG, config.model_variant, config.model_url)
@@ -475,16 +511,19 @@ class Settings:
             if new_index or self.app.state.store.status()['files']==0:
                 if self.stopping.is_set():
                     raise RuntimeError('The engine is shutting down')
-                self.job.update(state='indexing')
-                with self.app.state.engine.pin(): result=self.app.state.store.index()
+                self.job.update(state='indexing',origin='manual')
+                with self.automatic.guard(owner, False, self.job):
+                    with self.app.state.engine.pin(): result=self.app.state.store.index()
                 self.job['index_errors']=len(result['errors'])
                 self.job['cancelled']=bool(result.get('cancelled'))
+                self.job['paused']=bool(result.get('paused'))
+                self.automatic.completed(self.job,result)
                 report=self.storage/'data'/'reports'/f'index-{time.time_ns()}.json'
                 report.parent.mkdir(parents=True,exist_ok=True)
                 report.write_text(json.dumps(result,ensure_ascii=False,indent=2))
                 self.job['report_path']=str(report)
                 self.job['storage_by_kind']=self.app.state.store.storage_by_kind()
-            self.job.update(state='cancelled' if self.job.get('cancelled') else 'complete',finished_at=time.time())
+            self.job.update(state='paused' if self.job.get('paused') else 'cancelled' if self.job.get('cancelled') else 'complete',pausing=False,finished_at=time.time())
         except Exception as error:
             self.job.update(state='error',error=str(error),finished_at=time.time())
         finally:

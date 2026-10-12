@@ -33,6 +33,6 @@ All Files prefers photographs over video scenes within a small similarity margin
 
 ### Automatic incremental indexing
 
-Version 0.7.0 is planned to use opt-in background commands supported by both launchers, without a separate LaunchAgent. Keep one incremental engine, charging/schedule conditions, pause/resume/cancel, and manual Update Search Index. Automatic jobs must stop when their launcher exits or their extension is removed, recover from sleep/restart using committed entries, and avoid duplicate work across hosts.
+Version 0.7.0 is being tested with opt-in background commands supported by both launchers, without a separate LaunchAgent. Keep one incremental engine, charging/schedule conditions, pause/resume/cancel, and manual Update Search Index. Automatic jobs must stop when their launcher exits or their extension is removed, recover from sleep/restart using committed entries, and avoid duplicate work across hosts.
 
-Automatic indexing remains queued. The Store submission targets the published 0.6.4 companion release. Automated checks and human review remain separate acceptance steps. Continue handling reviewer feedback in the existing PR.
+The candidate implements shared scheduling, power checks and persistent pause/resume/cancel. Independent backend and UI reviews have completed; packaging and native launcher validation are the remaining gates before release. Automatic indexing is not in the published 0.6.5 package yet. The Store submission targets the published 0.6.4 companion release. Automated checks and human review remain separate acceptance steps. Continue handling reviewer feedback in the existing PR.

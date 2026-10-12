@@ -1,3 +1,7 @@
+## [Automatic Library Updates] - {PR_MERGE_DATE}
+
+- Add optional scheduled incremental indexing, external-power conditions, pause/resume and launcher lifetime controls. Requires companion engine 0.7.0; existing indexes are reused.
+
 ## [Photo-first visual ranking] - {PR_MERGE_DATE}
 
 - Prefer photos over similarly matching video scenes in All Files, retaining stronger video matches and unchanged content filters. Uses companion engine 0.6.5; existing indexes need no rebuilding.
