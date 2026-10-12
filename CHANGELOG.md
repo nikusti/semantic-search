@@ -2,6 +2,10 @@
 
 The complete published version history is kept here. Earlier installation archives are retired from this repository; use the latest release. Dates are in UTC.
 
+## Unreleased
+
+- Stop obsolete Photos metadata retries after switching results, closing Search or opening Manage Library. Preserve retries for the active photo and explicit clipboard copying.
+
 ## [0.6.0] - 2026-10-12
 
 - Keep Search and settings in their normal loading views while connecting; show engine installation/retry instructions only after a connection failure.
