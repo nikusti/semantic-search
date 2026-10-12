@@ -6,7 +6,7 @@ Tinycast enables the [Raycast Store registry](https://tinycast.dev/docs/extensio
 
 Raycast publication creates a pull request in [raycast/extensions](https://github.com/raycast/extensions). The Raycast team reviews it and, after acceptance and merge, publishes the extension. See the [publication workflow](https://developers.raycast.com/basics/publish-an-extension).
 
-The extension has been submitted for review in [raycast/extensions#32190](https://github.com/raycast/extensions/pull/32190). The source repository and matching 0.5.1 companion assets are public. This is an open review, not an accepted Store listing. The GitHub author is subscribed to PR updates.
+The extension has been submitted for review in [raycast/extensions#32190](https://github.com/raycast/extensions/pull/32190). The source repository and companion assets are public. The current PR targets 0.5.1; GitHub release 0.6.0 adds Apple Photos and later fixes, and its matching Store package is ready for a separate PR update. This is an open review, not an accepted Store listing. The GitHub author is subscribed to PR updates.
 
 The submission contains the lightweight launcher UI and four Raycast screenshots using synthetic documents/generated photographs. Engine/model binaries and local library data are not included in the PR. The unsigned companion installer is disclosed in the PR and setup guide; acceptance of this installation design remains a reviewer decision.
 

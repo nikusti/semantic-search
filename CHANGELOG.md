@@ -2,7 +2,7 @@
 
 The complete published version history is kept here. Earlier installation archives are retired from this repository; use the latest release. Dates are in UTC.
 
-## [0.6.0] - Unreleased
+## [0.6.0] - 2026-10-12
 
 - Keep Search and settings in their normal loading views while connecting; show engine installation/retry instructions only after a connection failure.
 - Show the ready search prompt immediately on an empty launch and count fixed-size vectors without reading their payloads when opening/polling library statistics.

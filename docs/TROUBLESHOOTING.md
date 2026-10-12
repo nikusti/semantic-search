@@ -32,7 +32,7 @@ The model worker exits after the configured idle timeout, normally one minute. I
 
 ## Apple Photos access or iCloud media is unavailable
 
-Apple Photos support is in the unreleased 0.6.0 source. Enable the source, use **Actions → Connect Apple Photos** and grant the helper permission. Enable iCloud downloads to import or copy media missing locally. Unsigned helper updates may require permission again. Already indexed thumbnails can remain visible offline. A video with an unreadable soundtrack keeps its completed visual scenes; the next index update retries missing audio. See [Apple Photos](APPLE_PHOTOS.md).
+Apple Photos support is available from 0.6.0. Enable the source, use **Actions → Connect Apple Photos** and grant the helper permission. Enable iCloud downloads to import or copy media missing locally. Unsigned helper updates may require permission again. Already indexed thumbnails can remain visible offline. A video with an unreadable soundtrack keeps its completed visual scenes; the next index update retries missing audio. See [Apple Photos](APPLE_PHOTOS.md).
 
 ## The model was deleted
 

@@ -1,6 +1,6 @@
 # Apple Photos
 
-Available in the current 0.6.0 source, which is not released yet. The published 0.5.1 packages and submitted Store package do not include this importer.
+Available in Semantic Search **0.6.0**. Both the bundled extension ZIP and companion engine include the native Photos helper.
 
 In Model Settings, enable **Search photos and videos in the Photos library**, choose **Actions → Connect Apple Photos**, and allow the macOS permission request. Apply the settings and choose **Update Search Index**. The existing content switches apply to both folders and Photos: **Photographs and images**, **Video scenes**, and **Audio and video soundtracks**. You can index video without photographs, or only video soundtracks. Folder and Photos results use the same selected model's index; changing the model still selects its own vector space.
 
