@@ -53,6 +53,9 @@ class ModelSourceRequest(BaseModel):
 class ExclusionsRequest(BaseModel):
     excluded_paths: list[str] = Field(max_length=100)
 
+class IndexRequest(BaseModel):
+    retry_skipped: bool = False
+
 
 def create_app(config, engine=None, request_stop=None):
     operation_lock = threading.RLock()
@@ -126,7 +129,7 @@ def create_app(config, engine=None, request_stop=None):
             return app.state.store.search(body.query.strip(), body.kind, body.limit)
 
     @app.post("/v1/index")
-    def index():
+    def index(body: IndexRequest | None = None):
         # Explicit scans only; folders are selected in settings.
         owned = False
         result = None
@@ -140,7 +143,7 @@ def create_app(config, engine=None, request_stop=None):
                 import time
                 app.state.settings.job={'state':'indexing','started_at':time.time(),'error':None}
             with app.state.engine.pin() if hasattr(app.state.engine, "pin") else nullcontext():
-                result=app.state.store.index()
+                result=app.state.store.index(retry_skipped=True) if body and body.retry_skipped else app.state.store.index()
                 return result
         except RuntimeError as error:
             raise HTTPException(409, str(error)) from error
@@ -262,11 +265,11 @@ def create_app(config, engine=None, request_stop=None):
         return app.state.settings.cancel_index()
 
     @app.post("/v1/index/start")
-    def start_index():
+    def start_index(body: IndexRequest | None = None):
         try:
             with operation_lock:
                 require_model()
-                return app.state.settings.start_index()
+                return app.state.settings.start_index(retry_skipped=bool(body and body.retry_skipped))
         except ValueError as error:
             raise HTTPException(422,str(error)) from error
         except RuntimeError as error:

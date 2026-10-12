@@ -2,6 +2,14 @@
 
 The complete published version history is kept here. Earlier installation archives are retired from this repository; use the latest release. Dates are in UTC.
 
+## [0.6.2] - Unreleased
+
+- Check unchanged Photos using compact metadata without reading saved vectors or JPEG payloads. Learn legacy thumbnail metadata once and avoid repeatedly regenerating small representations.
+- Persist stable indexing limitations until the source or relevant settings change. Back off temporary failures for one hour, four hours and then daily.
+- Preserve searchable filesystem video scenes when soundtrack decoding fails, matching Photos behavior; retry only missing audio windows.
+- Add Retry Skipped Files in Search and Manage Library. Report saved skips, postponed retries and incomplete audio separately, and retain access to the local report after restart.
+- Preserve model/index identities and existing vectors. Scheduled background indexing remains a separate planned feature.
+
 ## [0.6.1] - 2026-10-12
 
 - Stop obsolete Photos metadata retries after switching results, closing Search or opening Manage Library. Preserve retries for the active photo and explicit clipboard copying.

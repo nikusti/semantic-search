@@ -350,11 +350,11 @@ def test_failed_soundtrack_keeps_scenes_and_retries_only_missing_windows(config,
         before = [tuple(r) for r in store.db.execute('SELECT vector,start_seconds,end_seconds,modality FROM chunks ORDER BY position')]
         assert store.db.execute('SELECT fingerprint FROM photos_assets').fetchone()[0].startswith(PHOTOS_AUDIO_PENDING)
         attempts.clear()
-        assert store.index()['partial_videos'] == 1
+        assert store.index(retry_skipped=True)['partial_videos'] == 1
         assert set(attempts) == failing and engine.video_calls == 3 and engine.audio_calls == 3-len(failing)
         assert before == [tuple(r) for r in store.db.execute('SELECT vector,start_seconds,end_seconds,modality FROM chunks ORDER BY position')]
         failing.clear(); attempts.clear()
-        fixed = store.index()
+        fixed = store.index(retry_skipped=True)
         assert fixed['updated'] == 1 and not fixed['errors'] and not fixed.get('partial_videos')
         assert set(attempts) == failed_starts and engine.video_calls == 3 and engine.audio_calls == 3
         assert store.db.execute('SELECT count(*) FROM chunks').fetchone()[0] == 6
@@ -378,7 +378,7 @@ def test_cancelled_soundtrack_retry_preserves_partial_index(config, videos, monk
             store.cancel_index()
             return np.ones(16000, dtype=np.float32)
         monkeypatch.setattr(media, 'audio_samples', cancel)
-        assert store.index()['cancelled']
+        assert store.index(retry_skipped=True)['cancelled']
         assert before == [tuple(r) for r in store.db.execute('SELECT * FROM chunks')]
         assert engine.video_calls == 3 and videos.original.exists() and not videos.temporary.exists()
     finally: store.close()

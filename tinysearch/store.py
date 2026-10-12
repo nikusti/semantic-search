@@ -7,14 +7,25 @@ import sqlite3
 import subprocess
 import threading
 import time
+from typing import NamedTuple
 import numpy as np
 from .engine import normalize
 from .extract import EXCLUDED, extract, kind, thumbnail
 from .preview import render_pdf, photo_transition
 from . import media
 from . import photos
+from .index_failures import FailureCache, UnsupportedContent, policy, summarize_skip
 
 PHOTOS_AUDIO_PENDING = 'audio-pending:'
+
+class PhotoState(NamedTuple):
+    fingerprint: str
+    has_thumbnail: bool
+    pixels: int | None
+    quality: int | None
+    duration_seconds: float | None
+    has_audio: bool | None
+    has_vectors: bool
 
 class IndexPathExcluded(Exception):
     """An in-flight file was excluded; discard it without reporting failure."""
@@ -37,8 +48,10 @@ def purge_excluded(db, config, verify_identity=True):
     if not row or (verify_identity and not row[0].startswith('embeddinggemma-2:')):
         return 0
     paths = [(row[0],) for row in db.execute('SELECT path FROM files') if config.is_excluded(row[0])]
-    if not paths:
-        return 0
+    if 'index_failures' in tables:
+        failures = [(row[0],) for row in db.execute('SELECT DISTINCT path FROM index_failures') if config.is_excluded(row[0])]
+        with db: db.executemany('DELETE FROM index_failures WHERE path=?', failures)
+    if not paths: return 0
     cached_segments = []
     columns = {r[1] for r in db.execute('PRAGMA table_info(chunks)')}
     if {'start_seconds', 'end_seconds'} <= columns:
@@ -51,7 +64,7 @@ def purge_excluded(db, config, verify_identity=True):
                 cached_segments.append(config.database.parent / 'segment-previews' /
                                        (key + ('.mp4' if kind == 'video' else '.wav')))
     with db:
-        for table in ('chunks', 'thumbnails', 'pdf_previews', 'media_files'):
+        for table in ('chunks', 'thumbnails', 'thumbnail_specs', 'pdf_previews', 'media_files', 'photos_metadata', 'photos_assets'):
             if table in tables:
                 db.executemany(f'DELETE FROM {table} WHERE path=?', paths)
         db.executemany('DELETE FROM files WHERE path=?', paths)
@@ -100,7 +113,11 @@ class Store:
           CREATE TABLE IF NOT EXISTS photos_metadata (
             path TEXT PRIMARY KEY REFERENCES files(path) ON DELETE CASCADE,
             created_at REAL);
+          CREATE TABLE IF NOT EXISTS thumbnail_specs (
+            path TEXT PRIMARY KEY REFERENCES files(path) ON DELETE CASCADE,
+            pixels INTEGER NOT NULL, quality INTEGER NOT NULL);
         """)
+        self.failures = FailureCache(self.db, self.lock)
         columns = {row[1] for row in self.db.execute("PRAGMA table_info(chunks)")}
         for name, sql_type in (("start_seconds", "REAL"), ("end_seconds", "REAL"), ("modality", "TEXT")):
             if name not in columns:
@@ -114,6 +131,8 @@ class Store:
         obsolete = [(row[0],) for row in self.db.execute("SELECT DISTINCT root FROM files")
                     if row[0] not in allowed_roots]
         self.db.executemany("DELETE FROM files WHERE root=?", obsolete)
+        obsolete_failures = [(r[0],) for r in self.db.execute('SELECT DISTINCT root FROM index_failures') if r[0] not in allowed_roots]
+        self.db.executemany('DELETE FROM index_failures WHERE root=?', obsolete_failures)
         self.db.commit()
         self.excluded_removed = self.prune_excluded()
 
@@ -140,6 +159,11 @@ class Store:
 
     def _check_cancelled(self):
         if self.cancel_requested.is_set(): raise IndexCancelled()
+
+    def _save_thumbnail(self, path, jpeg):
+        self.db.execute('INSERT OR REPLACE INTO thumbnails VALUES (?,?)', (str(path), jpeg))
+        self.db.execute('INSERT OR REPLACE INTO thumbnail_specs VALUES (?,?,?)',
+                        (str(path), self.config.thumbnail_px, self.config.thumbnail_quality))
 
     def close(self):
         with self.preview_lock:
@@ -345,12 +369,15 @@ class Store:
             self.progress["current_chunks_done"] += 1
         return chunks, poster
 
-    def index(self):
+    def index(self, retry_skipped=False):
         if not self.index_lock.acquire(blocking=False):
             raise RuntimeError("An indexing pass is already running")
-        summary = {"indexed": 0, "added": 0, "updated": 0, "unchanged": 0, "reused": 0, "deleted": 0, "excluded": 0, "errors": []}
+        summary = {"indexed": 0, "added": 0, "updated": 0, "unchanged": 0, "reused": 0, "deleted": 0, "excluded": 0, "errors": [],
+                   "cached_skips": 0, "retry_deferred": 0, "audio_retries_deferred": 0, "skipped": []}
+        failure_policy = policy(self.config)
         self.progress = {"total": 0, "processed": 0, "started_at": time.time(),
                          "finished_at": None, "errors": 0,
+                         "cached_skips": 0, "retry_deferred": 0,
                          "current_chunks_done": 0, "current_chunks_total": 0}
         try:
             for root in self.config.roots:
@@ -359,19 +386,34 @@ class Store:
                 summary["errors"].extend(scan_errors)
                 seen = {str(p) for p in paths}
                 for path in paths:
+                    fingerprint = None
                     self.progress["current_chunks_done"] = 0
                     self.progress["current_chunks_total"] = 0
                     try:
                         self._check_included(path)
                         stat = path.stat()
+                        fingerprint = f'{stat.st_mtime_ns}:{stat.st_size}'
+                        cached_failure = self.failures.lookup(path, 'file', fingerprint, failure_policy, retry_skipped)
+                        if cached_failure:
+                            summarize_skip(summary, cached_failure)
+                            continue
                         file_kind = kind(path)
                         is_media = file_kind in {"video", "audio"}
                         limit = self.config.max_media_file_mb if is_media else self.config.max_file_mb
                         if stat.st_size > limit * 1024 * 1024:
-                            raise ValueError(f"Larger than {limit} MB limit")
+                            raise UnsupportedContent(f"Larger than {limit} MB limit", 'file_size')
                         with self.lock:
                             old = self.db.execute("SELECT * FROM files WHERE path=?", (str(path),)).fetchone()
-                        if old and old["mtime"] == stat.st_mtime_ns and old["size"] == stat.st_size:
+                        same_file = bool(old and old['mtime'] == stat.st_mtime_ns and old['size'] == stat.st_size)
+                        retry_audio = bool(same_file and file_kind == 'video' and self.config.enable_audio and old['digest'].startswith(PHOTOS_AUDIO_PENDING))
+                        if retry_audio:
+                            cached_audio = self.failures.lookup(path, 'audio', fingerprint, failure_policy, retry_skipped)
+                            if cached_audio:
+                                summarize_skip(summary, cached_audio)
+                                summary['partial_videos'] = summary.get('partial_videos', 0) + 1
+                                summary['unchanged'] += 1
+                                continue
+                        if same_file and not retry_audio:
                             if old["kind"] == "image":
                                 with self.lock:
                                     has_thumbnail = self.db.execute("SELECT 1 FROM thumbnails WHERE path=?", (str(path),)).fetchone()
@@ -379,40 +421,49 @@ class Store:
                                     jpeg = thumbnail(path, self.config.thumbnail_px, self.config.thumbnail_quality)
                                     with self.lock, self.db:
                                         self._check_included(path)
-                                        self.db.execute("INSERT INTO thumbnails VALUES (?, ?)", (str(path), jpeg))
+                                        self._save_thumbnail(path, jpeg)
+                            self.failures.clear(path, 'file')
                             summary["unchanged"] += 1
                             continue
-                        with path.open("rb") as source:
-                            digest = hashlib.file_digest(source, "sha256").hexdigest()
+                        if retry_audio:
+                            digest = old['digest'].removeprefix(PHOTOS_AUDIO_PENDING)
+                        else:
+                            with path.open("rb") as source:
+                                digest = hashlib.file_digest(source, "sha256").hexdigest()
                         info = media.probe(path, self.config) if is_media else None
                         if info and info.duration > self.config.max_media_seconds:
-                            raise ValueError(f"Media exceeds {self.config.max_media_seconds} seconds; skipped, not truncated")
+                            raise UnsupportedContent(f"Media exceeds {self.config.max_media_seconds} seconds; skipped, not truncated", 'duration')
                         jpeg = None
+                        audio_errors = []
                         with self.lock:
-                            reusable = self.db.execute(
+                            reusable = (str(path),) if retry_audio else self.db.execute(
                                 "SELECT path FROM files WHERE digest=? AND kind=? LIMIT 1",
                                 (digest, kind(path))).fetchone()
                             saved = self.db.execute("SELECT snippet, vector, start_seconds, end_seconds, modality FROM chunks WHERE path=? ORDER BY position",
                                                     (reusable[0],)).fetchall() if reusable else []
-                        if saved:
+                        if retry_audio:
+                            with self.lock:
+                                poster = self.db.execute('SELECT jpeg FROM thumbnails WHERE path=?', (str(path),)).fetchone()
+                            chunks, jpeg = self._media_chunks(path, info, saved_chunks=saved, poster=poster[0] if poster else None, audio_errors=audio_errors)
+                        elif saved:
                             chunks = [(r["snippet"], r["vector"], r["start_seconds"], r["end_seconds"], r["modality"]) for r in saved]
                             if file_kind == "video":
                                 with self.lock:
                                     reused_poster = self.db.execute("SELECT jpeg FROM thumbnails WHERE path=?", (reusable[0],)).fetchone()
                                 jpeg = reused_poster[0] if reused_poster else None
                         elif is_media:
-                            chunks, jpeg = self._media_chunks(path, info)
+                            chunks, jpeg = self._media_chunks(path, info, audio_errors=audio_errors if file_kind == 'video' and self.config.enable_video else None)
                         elif kind(path) == "image":
                             chunks = [("", self.engine.image(path).astype("<f4").tobytes(), None, None, None)]
                         else:
                             text = extract(path).strip()
                             if not text:
-                                raise ValueError("No extractable text (scanned PDFs need OCR)")
+                                raise UnsupportedContent("No extractable text (scanned PDFs need OCR)", 'no_text')
                             if len(text) > self.config.max_document_chars:
-                                raise ValueError(f"Document exceeds {self.config.max_document_chars} characters; skipped, not truncated")
+                                raise UnsupportedContent(f"Document exceeds {self.config.max_document_chars} characters; skipped, not truncated", 'document_length')
                             parts = list(self.engine.chunks(text))
                             if len(parts) > self.config.max_document_chunks:
-                                raise ValueError(f"Document exceeds {self.config.max_document_chunks} chunks; skipped, not truncated")
+                                raise UnsupportedContent(f"Document exceeds {self.config.max_document_chunks} chunks; skipped, not truncated", 'document_chunks')
                             self.progress["current_chunks_total"] = len(parts)
                             chunks = []
                             if self.config.backend in {'mlx', 'coreml'} and hasattr(self.engine,'document_batch'):
@@ -438,24 +489,44 @@ class Store:
                             self._check_included(path)
                             self.db.execute("DELETE FROM files WHERE path=?", (str(path),))
                             self.db.execute("INSERT INTO files VALUES (?, ?, ?, ?, ?, ?)",
-                                            (str(path), str(root), kind(path), stat.st_mtime_ns, stat.st_size, digest))
+                                            (str(path), str(root), kind(path), stat.st_mtime_ns, stat.st_size, PHOTOS_AUDIO_PENDING + digest if audio_errors else digest))
                             self.db.executemany("INSERT INTO chunks(path, position, snippet, vector, start_seconds, end_seconds, modality) VALUES (?, ?, ?, ?, ?, ?, ?)",
                                                 [(str(path), i, *chunk) for i, chunk in enumerate(chunks)])
                             if info:
                                 self.db.execute("INSERT INTO media_files VALUES (?, ?, ?)", (str(path), info.duration, int(info.has_audio)))
                             if jpeg:
-                                self.db.execute("INSERT INTO thumbnails VALUES (?, ?)", (str(path), jpeg))
-                        summary["reused" if saved else "indexed"] += 1
+                                self._save_thumbnail(path, jpeg)
+                        self.failures.clear(path, 'file')
+                        if audio_errors:
+                            message = f'{len(audio_errors)} audio window(s) could not be decoded; video scenes are indexed.'
+                            with self.lock:
+                                self._check_included(path)
+                                self.failures.record(path, 'audio', root, fingerprint, failure_policy, ValueError(message))
+                            summary['partial_videos'] = summary.get('partial_videos', 0) + 1
+                            summary['errors'].append(f'{path}: {message}')
+                        else:
+                            self.failures.clear(path, 'audio')
+                        summary["reused" if saved and not retry_audio else "indexed"] += 1
                         summary["updated" if old else "added"] += 1
                     except IndexCancelled:
                         raise
                     except IndexPathExcluded:
                         summary['excluded'] += 1
                     except Exception as error:
-                        summary["errors"].append(f"{path}: {error}")
+                        try:
+                            with self.lock:
+                                self._check_included(path)
+                                if path.suffix.lower() == '.pdf' and 'cryptography' in str(error) and 'AES' in str(error):
+                                    error = UnsupportedContent(str(error), 'pdf_encryption_dependency')
+                                if fingerprint is not None:
+                                    self.failures.record(path, 'file', root, fingerprint, failure_policy, error)
+                            summary["errors"].append(f"{path}: {error}")
+                        except IndexPathExcluded:
+                            summary['excluded'] += 1
                     finally:
                         self.progress["processed"] += 1
                         self.progress["errors"] = len(summary["errors"])
+                        self.progress.update(cached_skips=summary['cached_skips'], retry_deferred=summary['retry_deferred']+summary['audio_retries_deferred'])
                 # Never prune if part of the tree could not be read.
                 if not scan_errors:
                     self._check_cancelled()
@@ -464,15 +535,16 @@ class Store:
                         removed = [(r[0],) for r in old_paths if r[0] not in seen or self.config.is_excluded(r[0])]
                         self.db.executemany("DELETE FROM files WHERE path=?", removed)
                         summary["deleted"] += len(removed)
+                    self.failures.prune(root, seen)
             if self.config.enable_photos_library and (self.config.enable_images or self._enabled('video')):
-                self._index_photos(summary)
+                self._index_photos(summary, failure_policy, retry_skipped)
             return summary
         except IndexCancelled:
             summary['cancelled'] = True
             return summary
         finally:
             self.progress["finished_at"] = time.time()
-            last = {key: value for key, value in summary.items() if key != "errors"}
+            last = {key: value for key, value in summary.items() if key not in {'errors', 'skipped'}}
             last.update(errors=len(summary["errors"]), finished_at=self.progress["finished_at"])
             try:
                 with self.lock, self.db:
@@ -492,10 +564,15 @@ class Store:
     def _photo_enabled(self, file_kind):
         return self.config.enable_photos_library and self._enabled(file_kind)
 
-    def _index_photos(self, summary):
-        """Read a complete inventory; decode only enabled, new or edited assets."""
-        def progress(value):
-            self.progress.update(value)
+    def _index_photos(self, summary, failure_policy, retry_skipped):
+        """Compare small metadata first; fetch payloads only for actual work."""
+        def progress(value): self.progress.update(value)
+        legacy_specs = []
+        def save_legacy_specs():
+            if legacy_specs:
+                with self.lock, self.db:
+                    self.db.executemany('INSERT OR REPLACE INTO thumbnail_specs VALUES (?,?,?)', legacy_specs)
+                legacy_specs.clear()
         try:
             with photos.PhotoLibrary(self.cancel_requested.is_set, progress) as library:
                 self.progress.update(source='photos', phase='scanning')
@@ -507,6 +584,12 @@ class Store:
                 summary['library_video_seconds'] = sum(asset.get('duration', 0) for asset in inventory if asset.get('kind') == 'video')
                 self.progress['total'] += len(assets)
                 self.progress.update(phase='indexing', photos_total=len(assets))
+                with self.lock:
+                    existing = {row[0]: PhotoState(*row[1:]) for row in self.db.execute('''SELECT p.path,p.fingerprint,
+                        t.path IS NOT NULL,s.pixels,s.quality,m.duration_seconds,m.has_audio,
+                        EXISTS(SELECT 1 FROM chunks c WHERE c.path=p.path) AS has_vectors
+                        FROM photos_assets p LEFT JOIN thumbnails t ON t.path=p.path
+                        LEFT JOIN thumbnail_specs s ON s.path=p.path LEFT JOIN media_files m ON m.path=p.path''')}
                 for asset in assets:
                     self._check_cancelled()
                     path = photos.asset_path(asset['id'])
@@ -515,31 +598,70 @@ class Store:
                     source = None
                     self.progress.update(current_chunks_done=0, current_chunks_total=0, download_fraction=0)
                     try:
-                        with self.lock:
-                            old = self.db.execute('SELECT fingerprint FROM photos_assets WHERE path=?', (path,)).fetchone()
-                            cached = self.db.execute('SELECT jpeg FROM thumbnails WHERE path=?', (path,)).fetchone()
-                            saved = self.db.execute('SELECT snippet,vector,start_seconds,end_seconds,modality FROM chunks WHERE path=? ORDER BY position', (path,)).fetchall()
-                            saved_info = self.db.execute('SELECT * FROM media_files WHERE path=?', (path,)).fetchone()
-                        reusable = bool(old and old[0].removeprefix(PHOTOS_AUDIO_PENDING) == fingerprint and saved and (file_kind != 'video' or saved_info))
-                        retry_audio = bool(reusable and self.config.enable_audio and old[0].startswith(PHOTOS_AUDIO_PENDING))
-                        if reusable and cached and not retry_audio:
-                            from io import BytesIO
-                            from PIL import Image
-                            with Image.open(BytesIO(cached[0])) as small:
-                                edge = max(small.size)
-                            if edge >= min(self.config.thumbnail_px, max(asset['width'], asset['height'])):
-                                summary['unchanged'] += 1
-                                continue
+                        old = existing.get(path)
+                        reusable = bool(old and old.fingerprint.removeprefix(PHOTOS_AUDIO_PENDING) == fingerprint and old.has_vectors and (file_kind != 'video' or old.duration_seconds is not None))
+                        retry_audio = bool(reusable and self.config.enable_audio and old.fingerprint.startswith(PHOTOS_AUDIO_PENDING))
+                        cached_audio = self.failures.lookup(path, 'audio', fingerprint, failure_policy, retry_skipped) if retry_audio else None
+                        good_thumbnail = bool(reusable and old.has_thumbnail and old.pixels is not None and old.pixels >= self.config.thumbnail_px and old.quality >= self.config.thumbnail_quality)
+                        # Old indexes learn their thumbnail metadata once. Newly
+                        # generated thumbnails remember the requested size even
+                        # when Photos delivers a smaller/cropped representation.
+                        if reusable and old.has_thumbnail and old.pixels is None:
+                            with self.lock:
+                                cached = self.db.execute('SELECT jpeg FROM thumbnails WHERE path=?', (path,)).fetchone()
+                            if cached:
+                                from io import BytesIO
+                                from PIL import Image
+                                with Image.open(BytesIO(cached[0])) as small: edge = max(small.size)
+                                if edge >= min(self.config.thumbnail_px, max(asset['width'], asset['height'])):
+                                    legacy_specs.append((path, self.config.thumbnail_px, self.config.thumbnail_quality))
+                                    if len(legacy_specs) >= 256: save_legacy_specs()
+                                    good_thumbnail = True
+                        if reusable and good_thumbnail and (not retry_audio or cached_audio):
+                            summary['unchanged'] += 1
+                            if cached_audio:
+                                summarize_skip(summary, cached_audio)
+                                summary['partial_videos'] = summary.get('partial_videos', 0) + 1
+                            continue
+                        cached_failure = self.failures.lookup(path, 'file', fingerprint, failure_policy, retry_skipped)
+                        if cached_failure:
+                            summarize_skip(summary, cached_failure)
+                            continue
                         import shutil
                         if shutil.disk_usage(self.config.database.parent).free < 512 * 1024**2:
                             raise PhotosImportPaused('Less than 512 MB free. Free disk space before importing more Photos assets')
+                        # Thumbnail-only repair updates no vector/date/media row.
+                        if reusable and (not retry_audio or cached_audio):
+                            source = library.image(asset['id'], network=self.config.photos_allow_network)
+                            if source is None:
+                                key = 'deferred_videos' if file_kind == 'video' else 'deferred_photos'
+                                summary[key] = summary.get(key, 0) + 1
+                                continue
+                            modified = getattr(library, 'image_modified', None)
+                            if modified is not None and modified != asset['modified']:
+                                raise ValueError('Photo changed during import; retry on the next pass')
+                            jpeg = thumbnail(source, self.config.thumbnail_px, self.config.thumbnail_quality)
+                            self._check_cancelled()
+                            with self.lock, self.db: self._save_thumbnail(path, jpeg)
+                            self.failures.clear(path, 'file')
+                            summary['unchanged'] += 1
+                            if cached_audio:
+                                summarize_skip(summary, cached_audio)
+                                summary['partial_videos'] = summary.get('partial_videos', 0) + 1
+                            continue
                         info = None
                         audio_errors = []
-                        if file_kind == 'video' and (not reusable or retry_audio):
+                        saved, poster = [], None
+                        if reusable:
+                            with self.lock:
+                                saved = self.db.execute('SELECT snippet,vector,start_seconds,end_seconds,modality FROM chunks WHERE path=? ORDER BY position', (path,)).fetchall()
+                                cached = self.db.execute('SELECT jpeg FROM thumbnails WHERE path=?', (path,)).fetchone()
+                            poster = cached[0] if cached and good_thumbnail else None
+                        if file_kind == 'video':
                             import math
                             duration = asset.get('duration', 0)
                             if not math.isfinite(duration) or duration <= 0 or duration > self.config.max_media_seconds:
-                                raise ValueError('Video exceeds the duration limit or has no usable duration; skipped, not truncated')
+                                raise UnsupportedContent('Video exceeds the duration limit or has no usable duration; skipped, not truncated', 'duration')
                             source = library.video(asset['id'], network=self.config.photos_allow_network,
                                                    max_bytes=self.config.max_media_file_mb * 1024**2)
                             if source is not None:
@@ -547,12 +669,10 @@ class Store:
                                 if modified is not None and modified != asset['modified']:
                                     raise ValueError('Video changed during import; retry on the next pass')
                                 if source.stat().st_size > self.config.max_media_file_mb * 1024**2:
-                                    raise ValueError('Video exceeds the configured file size limit')
+                                    raise UnsupportedContent('Video exceeds the configured file size limit.', 'file_size')
                                 info = media.probe(source, self.config)
                                 chunks, jpeg = self._media_chunks(source, info, file_kind='video', identity_path=path, orient=True,
-                                    saved_chunks=saved if reusable else (), poster=cached[0] if reusable and cached else None,
-                                    audio_errors=audio_errors)
-                                # Audio-only indexing still needs a visible video poster.
+                                    saved_chunks=saved, poster=poster, audio_errors=audio_errors)
                                 if jpeg is None:
                                     jpeg = media.jpeg(media.frame(source, 0, self.config, orient=True), self.config.thumbnail_px, self.config.thumbnail_quality)
                                 name = getattr(library, 'video_name', None)
@@ -562,12 +682,10 @@ class Store:
                                 modified = getattr(library, 'image_modified', None)
                                 if modified is not None and modified != asset['modified']:
                                     raise ValueError('Photo changed during import; retry on the next pass')
-                                vector = saved[0]['vector'] if reusable else normalize(self.engine.image(source), self.engine.dimensions).astype('<f4').tobytes()
-                                chunks = [tuple(row) for row in saved] if reusable else [('', vector, None, None, None)]
+                                vector = normalize(self.engine.image(source), self.engine.dimensions).astype('<f4').tobytes()
+                                chunks = [('', vector, None, None, None)]
                                 jpeg = thumbnail(source, self.config.thumbnail_px, self.config.thumbnail_quality)
                                 name = getattr(library, 'image_name', None)
-                                if file_kind == 'video':
-                                    info = media.MediaInfo(saved_info['duration_seconds'], True, bool(saved_info['has_audio']))
                         if source is None:
                             key = 'deferred_videos' if file_kind == 'video' else 'deferred_photos'
                             summary[key] = summary.get(key, 0) + 1
@@ -580,40 +698,45 @@ class Store:
                                             (path, photos.ROOT, file_kind, int(asset['modified']*1e9), source.stat().st_size, stored_fingerprint))
                             self.db.executemany('INSERT INTO chunks(path,position,snippet,vector,start_seconds,end_seconds,modality) VALUES (?,?,?,?,?,?,?)',
                                                 [(path, i, *chunk) for i, chunk in enumerate(chunks)])
-                            self.db.execute('INSERT INTO thumbnails VALUES (?,?)', (path, jpeg))
+                            self._save_thumbnail(path, jpeg)
                             self.db.execute('INSERT INTO photos_assets VALUES (?,?,?,?)', (path, asset['id'], name or asset['name'], stored_fingerprint))
-                            if info:
-                                self.db.execute('INSERT INTO media_files VALUES (?,?,?)', (path, info.duration, int(info.has_audio)))
+                            if info: self.db.execute('INSERT INTO media_files VALUES (?,?,?)', (path, info.duration, int(info.has_audio)))
+                        self.failures.clear(path, 'file')
                         if audio_errors:
+                            message = f'{len(audio_errors)} audio window(s) could not be decoded; video scenes are indexed.'
+                            self.failures.record(path, 'audio', photos.ROOT, fingerprint, failure_policy, ValueError(message))
                             summary['partial_videos'] = summary.get('partial_videos', 0) + 1
-                            summary['errors'].append(f'Apple Photos: {len(audio_errors)} audio window(s) could not be decoded; video scenes are indexed. Retry Update Search Index to complete audio.')
-                        if reusable and not retry_audio:
-                            summary['unchanged'] += 1
+                            summary['errors'].append('Apple Photos: ' + message)
                         else:
-                            summary['indexed'] += 1
-                            summary['updated' if old else 'added'] += 1
+                            self.failures.clear(path, 'audio')
+                        summary['indexed'] += 1
+                        summary['updated' if old else 'added'] += 1
                     except (IndexCancelled, PhotosImportPaused):
                         raise
                     except Exception as error:
                         self._check_cancelled()
+                        if str(error) in {'Video exceeds the configured file size limit.', 'Video exceeds the configured file size limit'}:
+                            error = UnsupportedContent(str(error), 'file_size')
+                        self.failures.record(path, 'file', photos.ROOT, fingerprint, failure_policy, error)
                         summary['errors'].append(f'Apple Photos: {error}')
                     finally:
-                        if source is not None:
-                            # May be a symlink to Apple's original; unlink only the
-                            # temporary name, never resolve or delete its target.
-                            source.unlink(missing_ok=True)
+                        if source is not None: source.unlink(missing_ok=True)
                         self.progress['processed'] += 1
                         self.progress['errors'] = len(summary['errors'])
+                        self.progress.update(cached_skips=summary['cached_skips'], retry_deferred=summary['retry_deferred']+summary['audio_retries_deferred'])
                 self._check_cancelled()
                 with self.lock, self.db:
                     removed = [(r[0],) for r in self.db.execute('SELECT path FROM photos_assets') if r[0] not in seen]
                     self.db.executemany('DELETE FROM files WHERE path=?', removed)
                     summary['deleted'] += len(removed)
+                self.failures.prune(photos.ROOT, seen)
         except IndexCancelled:
             raise
         except Exception as error:
             self._check_cancelled()
             summary['errors'].append(f'Apple Photos: {error}')
+        finally:
+            save_legacy_specs()
 
     def photos_details(self, path):
         with self.preview_lock:

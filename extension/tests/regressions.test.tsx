@@ -63,6 +63,79 @@ const snapshot = (values = current) => ({
 });
 const status = { files: 1, chunks: 1, indexing: false };
 
+for (const command of ["settings", "search"] as const) {
+  test(`${command} explicitly retries skipped files without changing settings`, async (t) => {
+    launcher.serviceURL = "http://127.0.0.1:18799";
+    t.mock.method(globalThis, "setInterval", () => 1);
+    t.mock.method(globalThis, "clearInterval", () => {});
+    const posts: { url: string; body: unknown }[] = [];
+    t.mock.method(
+      globalThis,
+      "fetch",
+      async (url: string, init?: RequestInit) => {
+        if (init?.method === "POST") {
+          if (url.endsWith("/v1/index/start"))
+            posts.push({ url, body: JSON.parse(String(init.body)) });
+          return response({ state: "indexing" });
+        }
+        return response(
+          url.endsWith("/v1/settings")
+            ? snapshot()
+            : {
+                ...status,
+                roots: current.roots,
+                last_index_summary: {
+                  added: 0,
+                  updated: 0,
+                  unchanged: 1,
+                  deleted: 0,
+                  errors: 0,
+                  cached_skips: 3,
+                  retry_deferred: 2,
+                },
+              },
+        );
+      },
+    );
+    let view!: ReactTestRenderer;
+    try {
+      await act(async () => {
+        view = create(
+          command === "settings"
+            ? createElement(ModelSettings)
+            : createElement(SemanticSearch, {
+                arguments: { query: "" },
+                launchType: LaunchType.UserInitiated,
+              }),
+        );
+      });
+      if (command === "settings") {
+        const overview = view.root.findAll(
+          (node) =>
+            String(node.type) === "Description" && node.props.title === "Search index",
+        )[0].props.text;
+        assert.match(overview, /3 skipped without retry/);
+        assert.match(overview, /2 waiting to retry/);
+      }
+      const action = view.root.findAll(
+        (node) =>
+          String(node.type) === "Action" && node.props.title === "Retry Skipped Files",
+      );
+      assert.equal(action.length, 1);
+      await act(async () => action[0].props.onAction());
+      assert.deepEqual(posts, [
+        {
+          url: "http://127.0.0.1:18799/v1/index/start",
+          body: { retry_skipped: true },
+        },
+      ]);
+      assert.equal(launcher.toasts.at(-1)?.title, "Retrying skipped files");
+    } finally {
+      await act(async () => view?.unmount());
+    }
+  });
+}
+
 test("settings keeps one loading view through connection and fetching, without installation instructions", async (t) => {
   launcher.serviceURL = "http://127.0.0.1:18799";
   t.mock.method(globalThis, "setInterval", () => 1);

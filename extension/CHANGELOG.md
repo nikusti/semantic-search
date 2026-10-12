@@ -13,3 +13,5 @@
 - Keep completed video scenes searchable when soundtrack decoding fails.
 - Reduce startup screen transitions and speed up library statistics.
 - Stop obsolete Photos metadata retries when switching results, closing Search or opening Manage Library.
+
+- Compare unchanged Photos using metadata, remember stable skips and delay temporary retries. Offer Retry Skipped Files while preserving indexed video scenes and successful entries.

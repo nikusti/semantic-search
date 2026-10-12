@@ -53,6 +53,9 @@ def reuse_saved(config, target):
                     for table, columns in [('thumbnails',2),('media_files',3)]:
                         cached = old.execute(f'SELECT * FROM {table} WHERE path=?', (filename,)).fetchone()
                         if cached: target.execute(f'INSERT OR IGNORE INTO {table} VALUES ({",".join("?" * columns)})', tuple(cached))
+                    if old.execute("SELECT 1 FROM sqlite_master WHERE name='thumbnail_specs'").fetchone():
+                        spec = old.execute('SELECT * FROM thumbnail_specs WHERE path=?', (filename,)).fetchone()
+                        if spec: target.execute('INSERT OR IGNORE INTO thumbnail_specs VALUES (?,?,?)', tuple(spec))
                 reused += 1
         except sqlite3.Error:
             # Old or unrelated SQLite files are not valid sources for reuse.

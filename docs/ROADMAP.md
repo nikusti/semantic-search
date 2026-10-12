@@ -15,6 +15,10 @@ Version 0.6.0 includes the native PhotoKit importer for photographs and videos, 
 
 Independent source review, isolated installer tests with both models, a real 1,000-photo/50-video comparison and a complete library import with 100 retrieval queries have been completed locally. Phone-video orientation, cancellation, exclusions, originals preservation and index-preserving model deletion are covered by regressions. Version 0.6.0 installation packages include these changes. The pending Store submission now targets the matching 0.6.1 companion payload and launcher UI.
 
+### Incremental indexing improvements — 0.6.2 in development
+
+Use compact Photos metadata for unchanged checks, persist stable skip reasons, back off temporary failures, and offer explicit retries. Preserve video scenes independently of audio decoding failures. Validate on isolated copies of the full library before enabling a schedule. Existing model identities and vectors stay compatible.
+
 ### Automatic incremental indexing
 
 Design an optional schedule or watcher that updates new, changed and deleted files using the existing incremental scanner. Respect exclusions, cancellation, power/battery limits and model unloading. Keep manual Update Search Index available. Decide between a lightweight macOS mechanism and an agent only after measuring the requirements.

@@ -59,6 +59,9 @@ type IndexStatus = {
     unchanged: number;
     deleted: number;
     errors: number;
+    cached_skips?: number;
+    retry_deferred?: number;
+    audio_retries_deferred?: number;
     deferred_photos?: number;
     deferred_videos?: number;
     partial_videos?: number;
@@ -83,6 +86,8 @@ type IndexStatus = {
     processed: number;
     total: number;
     errors: number;
+    cached_skips?: number;
+    retry_deferred?: number;
     current_chunks_done: number;
     current_chunks_total: number;
   };
@@ -357,6 +362,12 @@ export default function ModelSettings({
         lastScan.added && `${lastScan.added} new`,
         lastScan.updated && `${lastScan.updated} changed`,
         lastScan.deleted && `${lastScan.deleted} removed`,
+        lastScan.cached_skips &&
+          `${lastScan.cached_skips} skipped without retry`,
+        lastScan.retry_deferred &&
+          `${lastScan.retry_deferred} waiting to retry`,
+        lastScan.audio_retries_deferred &&
+          `${lastScan.audio_retries_deferred} audio retries postponed`,
         lastScan.deferred_photos &&
           `${lastScan.deferred_photos} iCloud photos deferred`,
         lastScan.deferred_videos &&
@@ -367,7 +378,7 @@ export default function ModelSettings({
     : "";
   const scanSummary = indexStatus?.indexing
     ? progress && progress.total
-      ? `Indexing: ${progress.processed.toLocaleString()} / ${progress.total.toLocaleString()} checked (${Math.floor((progress.processed / progress.total) * 100)}%). ${Math.max(0, progress.total - progress.processed).toLocaleString()} remaining.${progress.errors ? ` ${progress.errors} skipped.` : ""}${progress.current_chunks_total ? `\nCurrent file: ${progress.current_chunks_done} / ${progress.current_chunks_total} segments.` : ""}`
+      ? `Indexing: ${progress.processed.toLocaleString()} / ${progress.total.toLocaleString()} checked (${Math.floor((progress.processed / progress.total) * 100)}%). ${Math.max(0, progress.total - progress.processed).toLocaleString()} remaining.${progress.errors ? ` ${progress.errors} issues.` : ""}${progress.cached_skips ? ` ${progress.cached_skips} skipped without retry.` : ""}${progress.retry_deferred ? ` ${progress.retry_deferred} waiting to retry.` : ""}${progress.current_chunks_total ? `\nCurrent file: ${progress.current_chunks_done} / ${progress.current_chunks_total} segments.` : ""}`
       : "Indexing: discovering files…"
     : lastScan
       ? `Last ${lastScan.cancelled ? "update cancelled" : "update"}${lastScan.finished_at ? `: ${new Date(lastScan.finished_at * 1000).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}` : ""} · ${changesSummary}${lastScan.errors > (lastScan.partial_videos || 0) ? ` · ${lastScan.errors - (lastScan.partial_videos || 0)} skipped${settings?.job.report_path ? " (report in Actions)" : ""}` : ""}${lastScan.partial_videos ? ` · ${lastScan.partial_videos} videos with incomplete audio` : ""}`
@@ -700,7 +711,7 @@ export default function ModelSettings({
       setApplyingSettings(false);
     }
   };
-  const indexFiles = async () => {
+  const indexFiles = async (retrySkipped = false) => {
     if (busy) return;
     if (dirty) {
       await showToast({
@@ -713,6 +724,12 @@ export default function ModelSettings({
     try {
       const response = await fetch(`${baseURL}/v1/index/start`, {
         method: "POST",
+        ...(retrySkipped
+          ? {
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ retry_skipped: true }),
+            }
+          : {}),
       });
       if (!response.ok)
         throw new Error(
@@ -721,9 +738,12 @@ export default function ModelSettings({
         );
       await showToast({
         style: Toast.Style.Success,
-        title: "Updating search index",
-        message:
-          "New and changed files are indexed. Unchanged files are skipped.",
+        title: retrySkipped
+          ? "Retrying skipped files"
+          : "Updating search index",
+        message: retrySkipped
+          ? "Previously skipped files are checked again. Completed entries are preserved."
+          : "New and changed files are indexed. Unchanged files are skipped.",
       });
     } catch (e) {
       await showToast({
@@ -809,6 +829,11 @@ export default function ModelSettings({
             title="Update Search Index"
             onAction={indexFiles}
             shortcut={Keyboard.Shortcut.Common.Refresh}
+          />
+          <Action
+            title="Retry Skipped Files"
+            icon={Icon.ArrowClockwise}
+            onAction={() => indexFiles(true)}
           />
           <Action
             title={

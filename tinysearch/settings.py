@@ -125,7 +125,16 @@ class Settings:
         current['roots'] = [str(p) for p in config.roots]
         current['model_url'] = config.model_url
         from .media import decoder_available
-        return {'models':models,'current':current,'profiles':dict(self.profiles),'job':dict(self.job),'storage_path':str(self.storage),'video_supported':True,'audio_supported':True,'media_decoder_available':decoder_available(config),'storage_by_kind':self.app.state.store.storage_by_kind()}
+        job = dict(self.job)
+        if not job.get('report_path'):
+            with self.app.state.store.lock:
+                saved_report = self.app.state.store.db.execute("SELECT value FROM meta WHERE key='last_index_report'").fetchone()
+            if saved_report:
+                name = saved_report[0]
+                if Path(name).name == name and name.startswith('index-') and name.endswith('.json'):
+                    report = self.storage/'data'/'reports'/name
+                    if report.is_file(): job['report_path'] = str(report)
+        return {'models':models,'current':current,'profiles':dict(self.profiles),'job':job,'storage_path':str(self.storage),'video_supported':True,'audio_supported':True,'media_decoder_available':decoder_available(config),'storage_by_kind':self.app.state.store.storage_by_kind()}
 
     def _start(self, target, *args):
         if self.stopping.is_set():
@@ -255,14 +264,14 @@ class Settings:
             self.job={'state':'deleted','model':entry['id'],'active_model_removed':active,'freed_bytes':size,'finished_at':time.time()}
             return dict(self.job)
 
-    def start_index(self):
+    def start_index(self, retry_skipped=False):
         if not self.app.state.store.config.roots and not self.app.state.store.config.enable_photos_library:
             raise ValueError("Choose folders in Model Settings before updating the index")
         with self.job_lock:
             if self.job['state'] in {'downloading','applying','indexing','cancelling'} or getattr(self.app.state,'manual_index',False) or self.app.state.store.index_lock.locked():
                 raise RuntimeError('An indexing or settings operation is already running')
             self.job={'state':'indexing','started_at':time.time(),'error':None}
-            self._start(self._index_current)
+            self._start(self._index_current, retry_skipped)
         return dict(self.job)
 
     def cancel_index(self):
@@ -273,12 +282,16 @@ class Settings:
             self.job.update(state='cancelling')
             return dict(self.job)
 
-    def _index_current(self):
+    def _index_current(self, retry_skipped=False):
         try:
-            with self.app.state.engine.pin() if hasattr(self.app.state.engine,'pin') else nullcontext(): result=self.app.state.store.index()
+            with self.app.state.engine.pin() if hasattr(self.app.state.engine,'pin') else nullcontext():
+                result=self.app.state.store.index(retry_skipped=True) if retry_skipped else self.app.state.store.index()
             report=self.storage/'data'/'reports'/f'index-{time.time_ns()}.json'
             report.parent.mkdir(parents=True,exist_ok=True)
             report.write_text(json.dumps(result,ensure_ascii=False,indent=2))
+            report.chmod(0o600)
+            with self.app.state.store.lock, self.app.state.store.db:
+                self.app.state.store.db.execute("INSERT OR REPLACE INTO meta VALUES ('last_index_report',?)", (report.name,))
             self.job.update(state='cancelled' if result.get('cancelled') else 'complete',finished_at=time.time(),index_errors=len(result['errors']),
                             report_path=str(report),storage_by_kind=self.app.state.store.storage_by_kind())
         except Exception as error:
