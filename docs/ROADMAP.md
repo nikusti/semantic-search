@@ -19,6 +19,10 @@ Independent source review, isolated installer tests with both models, a real 1,0
 
 Version 0.6.2 uses compact Photos metadata for unchanged checks, persists stable skip reasons, backs off temporary failures, and offers explicit retries. Video scenes are preserved independently of audio decoding failures. Isolated full-library tests, unchanged-vector integrity checks, installer tests with both models, and 162 engine/extension regressions passed. Existing model identities and vectors stay compatible.
 
+### Folder management — released in 0.6.3
+
+Version 0.6.3 adds cumulative folder selection, a visible source list and removal with optional index cleanup. Root-only edits preserve the current database; saved entries can be retained for reuse without remaining searchable. Nested sources and active indexing are protected.
+
 ### Automatic incremental indexing
 
 Version 0.7.0 is planned to use opt-in background commands supported by both launchers, without a separate LaunchAgent. Keep one incremental engine, charging/schedule conditions, pause/resume/cancel, and manual Update Search Index. Automatic jobs must stop when their launcher exits or their extension is removed, recover from sleep/restart using committed entries, and avoid duplicate work across hosts.

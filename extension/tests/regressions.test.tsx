@@ -17,6 +17,186 @@ import {
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
+function folderList(view: ReactTestRenderer): string {
+  return view.root.findAll(
+    (node) =>
+      String(node.type) === "Description" &&
+      node.props.title === "Folders to Search",
+  )[0].props.text;
+}
+
+test("native folder additions accumulate across picker opens and save only additions", async (t) => {
+  launcher.serviceURL = "http://127.0.0.1:18799";
+  t.mock.method(globalThis, "setInterval", () => 1);
+  t.mock.method(globalThis, "clearInterval", () => {});
+  const posts: unknown[] = [];
+  t.mock.method(
+    globalThis,
+    "fetch",
+    async (url: string, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        posts.push(JSON.parse(String(init.body)));
+        assert.ok(url.endsWith("/v1/folders/add"));
+        return response({
+          roots: [...current.roots, "/private/tmp/b", "/private/tmp/c"],
+          state: "complete",
+        });
+      }
+      return response(url.endsWith("/v1/settings") ? snapshot() : status);
+    },
+  );
+  let view!: ReactTestRenderer;
+  try {
+    await act(async () => {
+      view = create(createElement(ModelSettings));
+    });
+    await act(async () =>
+      field(view, "FilePicker", "roots").props.onChange(["/private/tmp/b"]),
+    );
+    await act(async () =>
+      field(view, "FilePicker", "roots").props.onChange([
+        "/private/tmp/c",
+        "/private/tmp/b",
+      ]),
+    );
+    assert.deepEqual(folderList(view).split("\n"), [
+      ...current.roots,
+      "/private/tmp/b",
+      "/private/tmp/c",
+    ]);
+    await act(async () => field(view, "SubmitForm").props.onSubmit());
+    assert.deepEqual(posts, [{ paths: ["/private/tmp/b", "/private/tmp/c"] }]);
+    assert.equal(field(view, "SubmitForm").props.title, "Update Search Index");
+  } finally {
+    await act(async () => view?.unmount());
+  }
+});
+
+for (const deleting of [false, true]) {
+  test(`folder removal sends explicit delete choice (${deleting}) and preserves unsaved additions`, async (t) => {
+    launcher.serviceURL = "http://127.0.0.1:18799";
+    t.mock.method(globalThis, "setInterval", () => 1);
+    t.mock.method(globalThis, "clearInterval", () => {});
+    const roots = ["/private/tmp/a", "/private/tmp/b"];
+    const posts: unknown[] = [];
+    t.mock.method(
+      globalThis,
+      "fetch",
+      async (url: string, init?: RequestInit) => {
+        if (init?.method === "POST") {
+          assert.ok(url.endsWith("/v1/folders/remove"));
+          posts.push(JSON.parse(String(init.body)));
+          return response({
+            roots: [roots[1]],
+            deleted_entries: deleting ? 3 : 0,
+            cleanup_pending: 0,
+          });
+        }
+        return response(
+          url.endsWith("/v1/settings")
+            ? snapshot({ ...current, roots })
+            : status,
+        );
+      },
+    );
+    let view!: ReactTestRenderer;
+    try {
+      await act(async () => {
+        view = create(createElement(ModelSettings));
+      });
+      await act(async () =>
+        field(view, "FilePicker", "roots").props.onChange(["/private/tmp/c"]),
+      );
+      await act(async () =>
+        field(view, "Dropdown", "folder_to_remove").props.onChange(roots[0]),
+      );
+      assert.equal(
+        field(view, "Checkbox", "delete_folder_index").props.value,
+        false,
+      );
+      if (deleting)
+        await act(async () =>
+          field(view, "Checkbox", "delete_folder_index").props.onChange(true),
+        );
+      assert.equal(
+        field(view, "SubmitForm").props.title,
+        deleting ? "Remove Folder & Delete Index" : "Remove Search Folder",
+      );
+      const remove = view.root.findAll(
+        (node) =>
+          String(node.type) === "Action" &&
+          node.props.title === "Remove Selected Folder",
+      )[0];
+      await act(async () => remove.props.onAction());
+      assert.deepEqual(posts, [
+        { path: roots[0], delete_saved_index: deleting },
+      ]);
+      assert.deepEqual(folderList(view).split("\n"), [
+        roots[1],
+        "/private/tmp/c",
+      ]);
+      assert.equal(
+        field(view, "SubmitForm").props.title,
+        "Save Search Folders",
+      );
+    } finally {
+      await act(async () => view?.unmount());
+    }
+  });
+}
+
+test("folder polling follows another host's removals while keeping only local additions", async (t) => {
+  launcher.serviceURL = "http://127.0.0.1:18799";
+  let poll!: () => void;
+  t.mock.method(globalThis, "setInterval", (callback: () => void) => {
+    poll = callback;
+    return 1;
+  });
+  t.mock.method(globalThis, "clearInterval", () => {});
+  let roots = [...current.roots];
+  const posts: unknown[] = [];
+  t.mock.method(
+    globalThis,
+    "fetch",
+    async (url: string, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        posts.push(JSON.parse(String(init.body)));
+        return response({
+          roots: [...roots, "/private/tmp/resolved"],
+          state: "complete",
+        });
+      }
+      return response(
+        url.endsWith("/v1/settings") ? snapshot({ ...current, roots }) : status,
+      );
+    },
+  );
+  let view!: ReactTestRenderer;
+  try {
+    await act(async () => {
+      view = create(createElement(ModelSettings));
+    });
+    await act(async () =>
+      field(view, "FilePicker", "roots").props.onChange(["/private/tmp/link"]),
+    );
+    roots = ["/private/tmp/from-other-host"];
+    await act(async () => poll());
+    assert.deepEqual(folderList(view).split("\n"), [
+      ...roots,
+      "/private/tmp/link",
+    ]);
+    await act(async () => field(view, "SubmitForm").props.onSubmit());
+    assert.deepEqual(posts, [{ paths: ["/private/tmp/link"] }]);
+    assert.deepEqual(folderList(view).split("\n"), [
+      ...roots,
+      "/private/tmp/resolved",
+    ]);
+    assert.equal(field(view, "SubmitForm").props.title, "Update Search Index");
+  } finally {
+    await act(async () => view?.unmount());
+  }
+});
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((done) => {
@@ -112,14 +292,16 @@ for (const command of ["settings", "search"] as const) {
       if (command === "settings") {
         const overview = view.root.findAll(
           (node) =>
-            String(node.type) === "Description" && node.props.title === "Search index",
+            String(node.type) === "Description" &&
+            node.props.title === "Search index",
         )[0].props.text;
         assert.match(overview, /3 skipped without retry/);
         assert.match(overview, /2 waiting to retry/);
       }
       const action = view.root.findAll(
         (node) =>
-          String(node.type) === "Action" && node.props.title === "Retry Skipped Files",
+          String(node.type) === "Action" &&
+          node.props.title === "Retry Skipped Files",
       );
       assert.equal(action.length, 1);
       await act(async () => action[0].props.onAction());
@@ -696,7 +878,10 @@ test("native folder requests preserve exact paths through Apply and exclusion sa
   launcher.serviceURL = "http://127.0.0.1:18799";
   t.mock.method(globalThis, "setInterval", () => 1);
   t.mock.method(globalThis, "clearInterval", () => {});
-  const requests: { url: string; body: typeof current }[] = [];
+  const requests: {
+    url: string;
+    body: typeof current & { paths?: string[] };
+  }[] = [];
   const unusual = [
     "/private/tmp/Research ",
     "/private/tmp/line\nbreak",
@@ -717,7 +902,9 @@ test("native folder requests preserve exact paths through Apply and exclusion sa
                 excluded_saved_entries_removed: 0,
                 cleanup_pending: 0,
               }
-            : { state: "applying" },
+            : url.endsWith("/v1/folders/add")
+              ? { roots: [...current.roots, ...unusual], state: "complete" }
+              : { state: "applying" },
         );
       }
       return response(url.endsWith("/v1/status") ? status : snapshot());
@@ -731,11 +918,12 @@ test("native folder requests preserve exact paths through Apply and exclusion sa
     await act(async () => {
       field(view, "FilePicker", "roots").props.onChange(unusual);
     });
-    assert.deepEqual(field(view, "FilePicker", "roots").props.value, unusual);
+    assert.deepEqual(field(view, "FilePicker", "roots").props.value, []);
     await act(async () => {
       await field(view, "SubmitForm").props.onSubmit();
     });
-    assert.deepEqual(requests[0].body.roots, folderRequestPaths(unusual));
+    assert.ok(requests[0].url.endsWith("/v1/folders/add"));
+    assert.deepEqual(requests[0].body.paths, folderRequestPaths(unusual));
     await act(async () => {
       field(view, "FilePicker", "excluded_folders").props.onChange(unusual);
     });

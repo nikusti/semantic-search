@@ -10,6 +10,7 @@ from .worker import ManagedEngine
 from .store import Store, purge_excluded
 from .model_source import resolve_source, installed, ensure_downloaded
 from .storage import APP_SUPPORT
+from .folders import selected_roots, covers, purge_folders
 
 ROOT = Path(__file__).resolve().parents[1]
 CATALOG = json.loads((Path(__file__).parent/'model_catalog.json').read_text())
@@ -134,7 +135,93 @@ class Settings:
                 if Path(name).name == name and name.startswith('index-') and name.endswith('.json'):
                     report = self.storage/'data'/'reports'/name
                     if report.is_file(): job['report_path'] = str(report)
-        return {'models':models,'current':current,'profiles':dict(self.profiles),'job':job,'storage_path':str(self.storage),'video_supported':True,'audio_supported':True,'media_decoder_available':decoder_available(config),'storage_by_kind':self.app.state.store.storage_by_kind()}
+        pending = self.storage/'folder-cleanup.json'
+        if pending.is_file(): job['folder_cleanup_pending'] = len(json.loads(pending.read_text()))
+        return {'models':models,'current':current,'profiles':dict(self.profiles),'job':job,'folders':self.app.state.store.folder_counts(),'storage_path':str(self.storage),'video_supported':True,'audio_supported':True,'media_decoder_available':decoder_available(config),'storage_by_kind':self.app.state.store.storage_by_kind()}
+
+    def update_folders(self, roots):
+        with self.job_lock:
+            if self.job['state'] in {'downloading','applying'} or self.stopping.is_set():
+                raise RuntimeError('Wait for model setup before changing search folders')
+            store = self.app.state.store
+            config = replace(store.config, roots=selected_roots(roots, store.config.roots))
+            if not config.source_path: raise ValueError('A saved config is required')
+            store.update_folders(config)
+            pending_file = self.storage/'folder-cleanup.json'
+            if pending_file.is_file():
+                self._save_folder_cleanup([item for item in json.loads(pending_file.read_text())
+                                           if not covers(item['root'],config.roots)])
+            from .index_reuse import reuse_saved
+            with store.lock: reused = reuse_saved(config, store.db)
+            # Keep an in-flight scan's state. Added roots are scanned on the next update.
+            if not store.index_lock.locked() and self.job['state'] not in {'indexing','cancelling'}:
+                self.job.update(state='complete',finished_at=time.time())
+            self.job.update(folders_changed=True,reused_files=reused)
+            return {'roots':[str(p) for p in config.roots], 'reused_files':reused,
+                    'indexing':store.index_lock.locked(), 'state':self.job['state']}
+
+    def add_folders(self, paths):
+        # The API is additive too, so two launchers cannot replace each other's additions.
+        return self.update_folders([str(p) for p in self.app.state.store.config.roots]+paths)
+
+    def remove_folder(self, path, delete_saved_index=False):
+        root = selected_roots([path], self.app.state.store.config.roots)[0]
+        config = self.app.state.store.config
+        if root not in config.roots:
+            raise ValueError('This folder is not selected for search')
+        result = self.update_folders([str(p) for p in config.roots if p != root])
+        if delete_saved_index:
+            pending_file = self.storage/'folder-cleanup.json'
+            pending = json.loads(pending_file.read_text()) if pending_file.is_file() else []
+            pending = [item for item in pending if item['root'] != str(root)]
+            pending.append({'root':str(root), 'protected':result['roots']})
+            self._save_folder_cleanup(pending)
+            result.update(self.cleanup_folders())
+        else:
+            result.update(deleted_entries=0,cleanup_pending=self.job.get('folder_cleanup_pending',0))
+        return result
+
+    def _save_folder_cleanup(self, pending):
+        path = self.storage/'folder-cleanup.json'
+        if pending:
+            temporary = path.with_suffix('.tmp')
+            temporary.write_text(json.dumps(pending,indent=2))
+            temporary.chmod(0o600)
+            temporary.replace(path)
+        else: path.unlink(missing_ok=True)
+        self.job['folder_cleanup_pending'] = len(pending)
+
+    def cleanup_folders(self):
+        import sqlite3
+        pending_file = self.storage/'folder-cleanup.json'
+        pending = json.loads(pending_file.read_text()) if pending_file.is_file() else []
+        store = self.app.state.store
+        deleted, remaining = 0, []
+        for item in pending:
+            root = Path(item['root'])
+            if covers(root, store.config.roots): continue  # Re-added: cancel the old deletion request.
+            protected = tuple(set(store.config.roots)|{Path(p) for p in item['protected']})
+            failed = False
+            # Include the active index even when a CLI stores it outside data/.
+            databases = set(store.config.database.parent.glob('*.sqlite3'))|{store.config.database}
+            for path in sorted(databases):
+                if path.is_symlink(): continue
+                db = None
+                try:
+                    if path.resolve() == store.config.database.resolve():
+                        with store.lock:
+                            deleted += purge_folders(store.db,(root,),protected,path,verify_identity=False)
+                    else:
+                        db = sqlite3.connect(path.as_uri()+'?mode=rw',uri=True,timeout=1)
+                        db.execute('PRAGMA foreign_keys=ON')
+                        deleted += purge_folders(db,(root,),protected,path)
+                except (sqlite3.Error,OSError): failed=True
+                finally:
+                    if db: db.close()
+            if failed: remaining.append(item)
+        self._save_folder_cleanup(remaining)
+        self.job['folder_cleanup_pending'] = len(remaining)
+        return {'deleted_entries':deleted,'cleanup_pending':len(remaining)}
 
     def _start(self, target, *args):
         if self.stopping.is_set():
@@ -152,6 +239,17 @@ class Settings:
 
     def apply(self,values):
         current = self.app.state.store.config
+        folder_only = values.get('roots') is not None and all(
+            key == 'roots' or value is None or (key == 'model_url' and current.model_variant != 'custom') or
+            (key == 'excluded_paths' and validated_exclusions(value) == current.excluded_paths) or
+            value == getattr(current,key)
+            for key,value in values.items())
+        from .worker import ManagedEngine as ProcessEngine
+        folder_fast_path = folder_only and (not isinstance(self.app.state.engine,ProcessEngine) or downloaded(
+            resolve_source(self.storage,CATALOG,current.model_variant,current.model_url),self.storage))
+        if folder_only and folder_fast_path and selected_roots(values['roots'],current.roots) != current.roots:
+            self.update_folders(values['roots'])
+            return dict(self.job)
         # Exclusions do not change the model or its vector space. Save them
         # in place even while the existing indexing worker is running.
         unchanged = all(
@@ -164,6 +262,9 @@ class Settings:
             return self.update_exclusions(values['excluded_paths'])
         if not any(values.get(key,False) for key in ('enable_documents','enable_images','enable_video','enable_audio')): raise ValueError('Select at least one content type')
         config=configured(self.app.state.store.config,values)
+        from .engine import engine_identity
+        if engine_identity(config) == engine_identity(current) and config.enable_documents == current.enable_documents:
+            config = replace(config,database=current.database)
         if not config.roots and not config.enable_photos_library:
             raise ValueError('Choose at least one folder to index')
         if config.enable_video or config.enable_audio:

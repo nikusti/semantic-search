@@ -172,8 +172,27 @@ for name, entry in MANIFEST['processor']['files'].items():
             before = request('status')['chunks']
             request('index/start', {}); settle()
             assert request('status')['chunks'] == before
+            sibling = work / 'second-source'
+            sibling.mkdir(exist_ok=True)
+            (sibling / 'note.txt').write_text('Another searchable source with a spring gardening checklist.')
+            request('folders/add', {'paths': [str(sibling)]})
+            assert set(request('settings')['current']['roots']) == {str(fixtures), str(sibling)}
+            request('index/start', {}); settle()
+            assert request('status')['files'] == 5
+            request('folders/remove', {'path': str(sibling)})
+            assert request('status')['files'] == 4 and request('status')['retained_files'] == 1
+            assert not any(item['path'].startswith(str(sibling)+'/') for item in
+                           request('search', {'query': 'gardening', 'limit': 8})['results'])
+            request('folders/add', {'paths': [str(sibling)]})
+            request('index/start', {}); settle()
+            assert request('status')['last_index_summary']['unchanged'] == 5
+            assert request('status')['last_index_summary']['indexed'] == 0
+            cleaned = request('folders/remove', {'path': str(sibling), 'delete_saved_index': True})
+            assert cleaned['cleanup_pending'] == 0 and cleaned['deleted_entries'] >= 1
+            assert request('status')['files'] == 4 and request('status')['retained_files'] == 0
+            assert (sibling / 'note.txt').exists()
             backend_reports.append({'model': variant, 'search_seconds': elapsed, 'files': 4, 'vectors': before})
-            print(f'{variant}: text/photo search, PDF/photo previews and unchanged-index reuse passed.', flush=True)
+            print(f'{variant}: text/photo search, previews, cumulative sources, removal/cleanup and unchanged reuse passed.', flush=True)
         if args.models_copy_from: assert len(backend_reports) == 2, 'Both built-in model copies must be available'
         report['backends'] = backend_reports
         if backend_reports:

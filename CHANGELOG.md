@@ -2,6 +2,13 @@
 
 The complete published version history is kept here. Earlier installation archives are retired from this repository; use the latest release. Dates are in UTC.
 
+## [0.6.3] - 2026-10-12
+
+- Add search folders cumulatively and show the full selected list with indexed file counts. Native picker selections no longer replace existing sources.
+- Remove individual sources during indexing. Keep their saved entries hidden for reuse by default, or explicitly delete their records and previews across saved indexes.
+- Preserve the active database and vectors when folders change. Protect remaining nested sources, skip duplicate nested scans, and retain pending cleanup for retry.
+- Keep concurrent launcher edits and unfinished folder additions from being overwritten by settings polling.
+
 ## [0.6.2] - 2026-10-12
 
 - Check unchanged Photos using compact metadata without reading saved vectors or JPEG payloads. Learn legacy thumbnail metadata once and avoid repeatedly regenerating small representations.

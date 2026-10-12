@@ -53,7 +53,7 @@ The {version} companion is unsigned; macOS may require explicit opening approval
 
 MLX 8-bit and Core ML are supported; each model keeps a separate index. Text queries load only the text encoder even when searching indexed media. The default index uses 512-dimensional float32 vectors. By default, model workers unload one minute after leaving search when no indexing or request is active.
 
-**Update Search Index** adds new/changed files and removes missing files. Exclusions can be saved during indexing. Deleting a model preserves indexes and originals. Engine data is stored in `~/Library/Application Support/Semantic Search/`.
+**Update Search Index** adds new/changed files and removes missing files. Add Search Folders keeps existing sources. Remove a Folder hides saved entries by default, with optional index cleanup. Folder additions preserve existing vectors; removals and exclusions can be saved during indexing. Deleting a model preserves indexes and originals. Engine data is stored in `~/Library/Application Support/Semantic Search/`.
 
 Apple Photos is optional: enable the source in Manage Library, connect it in Actions and allow macOS access. Enable iCloud downloads to include media missing locally. Both models support photographs, video scenes and optional soundtracks. Originals stay in Photos; saved vectors and small thumbnails are retained locally. Photo results show creation dates, open in Photos and offer full-resolution **Copy Photo**. Apple controls its own Photos download cache.
 

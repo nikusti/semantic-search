@@ -4,6 +4,7 @@ from hashlib import sha256
 from importlib.metadata import PackageNotFoundError, version
 import json
 import time
+from .folders import covers
 
 
 class UnsupportedContent(ValueError):
@@ -69,9 +70,11 @@ class FailureCache:
                 with self.db:
                     self.db.execute('DELETE FROM index_failures WHERE path=? AND scope=?', (str(path), scope))
 
-    def prune(self, root, seen):
+    def prune(self, root, seen, protected=()):
         with self.lock, self.db:
-            paths = [(r[0],) for r in self.db.execute('SELECT DISTINCT path FROM index_failures WHERE root=?', (str(root),)) if r[0] not in seen]
+            paths = [(r[0],) for r in self.db.execute('SELECT DISTINCT path,root FROM index_failures')
+                     if (r[1] == str(root) or covers(r[0], (root,))) and
+                     r[0] not in seen and not covers(r[0], protected)]
             self.db.executemany('DELETE FROM index_failures WHERE path=?', paths)
 
 

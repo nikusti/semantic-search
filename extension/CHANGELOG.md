@@ -1,5 +1,11 @@
 # Semantic Search Changelog
 
+## Additive Search Folders - {PR_MERGE_DATE}
+
+- Add folders without replacing earlier sources and show the selected list.
+- Remove sources with optional index cleanup, while preserving originals and remaining nested folders.
+- Keep folder changes compatible with the existing database and active indexing.
+
 ## [Initial Store Release] - {PR_MERGE_DATE}
 
 - Search local files with EmbeddingGemma 2 through a separately installed local engine.

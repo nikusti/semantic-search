@@ -56,6 +56,13 @@ class ExclusionsRequest(BaseModel):
 class IndexRequest(BaseModel):
     retry_skipped: bool = False
 
+class FolderAddRequest(BaseModel):
+    paths: list[str] = Field(min_length=1,max_length=100)
+
+class FolderRemoveRequest(BaseModel):
+    path: str = Field(min_length=1,max_length=4096)
+    delete_saved_index: bool = False
+
 
 def create_app(config, engine=None, request_stop=None):
     operation_lock = threading.RLock()
@@ -176,6 +183,27 @@ def create_app(config, engine=None, request_stop=None):
             with operation_lock: return app.state.settings.update_exclusions(body.excluded_paths)
         except ValueError as error: raise HTTPException(422,str(error)) from error
         except RuntimeError as error: raise HTTPException(409,str(error)) from error
+
+    @app.post('/v1/folders/add')
+    def add_folders(body: FolderAddRequest):
+        try:
+            with operation_lock: return app.state.settings.add_folders(body.paths)
+        except ValueError as error: raise HTTPException(422,str(error)) from error
+        except RuntimeError as error: raise HTTPException(409,str(error)) from error
+
+    @app.post('/v1/folders/remove')
+    def remove_folder(body: FolderRemoveRequest):
+        try:
+            with operation_lock: return app.state.settings.remove_folder(body.path,body.delete_saved_index)
+        except ValueError as error: raise HTTPException(422,str(error)) from error
+        except RuntimeError as error: raise HTTPException(409,str(error)) from error
+
+    @app.post('/v1/folders/cleanup')
+    def cleanup_folders():
+        with operation_lock:
+            if app.state.settings.job['state'] in {'downloading','applying'}:
+                raise HTTPException(409,'Wait for model setup before cleanup')
+            return app.state.settings.cleanup_folders()
 
     @app.post('/v1/photos/connect')
     def connect_photos():

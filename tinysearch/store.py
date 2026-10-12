@@ -15,6 +15,7 @@ from .preview import render_pdf, photo_transition
 from . import media
 from . import photos
 from .index_failures import FailureCache, UnsupportedContent, policy, summarize_skip
+from .folders import covers
 
 PHOTOS_AUDIO_PENDING = 'audio-pending:'
 
@@ -127,12 +128,13 @@ class Store:
             self.db.close()
             raise RuntimeError("Index belongs to another model/pipeline. Use a new database path.")
         self.db.execute("INSERT OR IGNORE INTO meta VALUES ('engine', ?)", (engine.identity,))
-        allowed_roots = {str(root) for root in config.roots} | {photos.ROOT}
-        obsolete = [(row[0],) for row in self.db.execute("SELECT DISTINCT root FROM files")
-                    if row[0] not in allowed_roots]
-        self.db.executemany("DELETE FROM files WHERE root=?", obsolete)
-        obsolete_failures = [(r[0],) for r in self.db.execute('SELECT DISTINCT root FROM index_failures') if r[0] not in allowed_roots]
-        self.db.executemany('DELETE FROM index_failures WHERE root=?', obsolete_failures)
+        # Unselected sources remain saved until explicitly deleted, but never
+        # participate in search/counts. No vector-space migration is needed.
+        self.db.executescript('''CREATE TEMP TABLE active_roots (path TEXT PRIMARY KEY, prefix TEXT NOT NULL);
+            CREATE TEMP VIEW searchable_files AS SELECT f.* FROM files f
+            WHERE f.root='apple-photos' OR EXISTS
+              (SELECT 1 FROM active_roots r WHERE instr(f.path,r.prefix)=1);''')
+        self._select_roots(config.roots)
         self.db.commit()
         self.excluded_removed = self.prune_excluded()
 
@@ -149,9 +151,33 @@ class Store:
                 self.db.execute("INSERT OR REPLACE INTO meta VALUES ('index_revision', ?)", (str(time.time_ns()),))
             return removed
 
+    def _select_roots(self, roots):
+        self.db.execute('DELETE FROM active_roots')
+        self.db.executemany('INSERT INTO active_roots VALUES (?,?)',
+                            [(str(p), str(p).rstrip('/')+'/') for p in roots])
+
+    def update_folders(self, config):
+        with self.lock:
+            previous = self.config
+            try:
+                with self.db:
+                    self._select_roots(config.roots)
+                    self.db.execute("INSERT OR REPLACE INTO meta VALUES ('index_revision', ?)", (str(time.time_ns()),))
+                    config.save()
+                self.config = config
+            except Exception:
+                previous.save()
+                raise
+
+    def folder_counts(self):
+        with self.lock:
+            return [{'path':str(root), 'files':self.db.execute(
+                'SELECT count(*) FROM searchable_files WHERE instr(path,?)=1',
+                (str(root).rstrip('/')+'/',)).fetchone()[0]} for root in self.config.roots]
+
     def _check_included(self, path):
         self._check_cancelled()
-        if self.config.is_excluded(path):
+        if self.config.is_excluded(path) or (not str(path).startswith(photos.PREFIX) and not covers(path, self.config.roots)):
             raise IndexPathExcluded()
 
     def cancel_index(self):
@@ -185,8 +211,9 @@ class Store:
             return {"index_revision": int(revision[0]) if revision else 0,
                     "database_bytes": disk_bytes,
                     "last_index_summary": json.loads(last[0]) if last else None,
-                    "files": self.db.execute("SELECT count(*) FROM files").fetchone()[0],
-                    "chunks": self.db.execute("SELECT count(*) FROM chunks").fetchone()[0],
+                    "files": self.db.execute("SELECT count(*) FROM searchable_files").fetchone()[0],
+                    "chunks": self.db.execute("SELECT count(*) FROM chunks c JOIN searchable_files f ON f.path=c.path").fetchone()[0],
+                    "retained_files": self.db.execute("SELECT count(*) FROM files WHERE path NOT IN (SELECT path FROM searchable_files)").fetchone()[0],
                     "model": self.engine.identity, "dimensions": self.engine.dimensions,
                     "roots": [str(r) for r in self.config.roots],
                     "excluded_paths": [str(p) for p in self.config.excluded_paths],
@@ -209,7 +236,7 @@ class Store:
             return [dict(row) for row in self.db.execute("""
               SELECT f.kind, count(DISTINCT f.path) AS files, count(c.id) AS vectors,
                      count(c.id) * ? AS vector_bytes
-              FROM files f LEFT JOIN chunks c ON c.path=f.path GROUP BY f.kind
+              FROM searchable_files f LEFT JOIN chunks c ON c.path=f.path GROUP BY f.kind
             """, (self.engine.dimensions * 4,))]
 
     def segment(self, filename, start, end):
@@ -299,7 +326,7 @@ class Store:
 
     def _scan(self, root):
         errors, paths = [], []
-        if self.config.is_excluded(root):
+        if self.config.is_excluded(root) or root not in self.config.roots:
             return paths, errors
         if not root.is_dir():
             return paths, [f"Root unavailable: {root}"]
@@ -309,6 +336,7 @@ class Store:
             self._check_cancelled()
             dirs[:] = sorted(d for d in dirs if d not in EXCLUDED and not d.startswith(".")
                              and not (Path(folder) / d).is_symlink()
+                             and (Path(folder) / d) not in self.config.roots
                              and not self.config.is_excluded(Path(folder) / d))
             for name in sorted(names):
                 path = Path(folder) / name
@@ -381,6 +409,7 @@ class Store:
                          "current_chunks_done": 0, "current_chunks_total": 0}
         try:
             for root in self.config.roots:
+                selection = self.config.roots
                 paths, scan_errors = self._scan(root)
                 self.progress["total"] += len(paths)
                 summary["errors"].extend(scan_errors)
@@ -395,6 +424,8 @@ class Store:
                         fingerprint = f'{stat.st_mtime_ns}:{stat.st_size}'
                         cached_failure = self.failures.lookup(path, 'file', fingerprint, failure_policy, retry_skipped)
                         if cached_failure:
+                            with self.lock, self.db:
+                                self.db.execute('UPDATE index_failures SET root=? WHERE path=?', (str(root), str(path)))
                             summarize_skip(summary, cached_failure)
                             continue
                         file_kind = kind(path)
@@ -414,6 +445,10 @@ class Store:
                                 summary['unchanged'] += 1
                                 continue
                         if same_file and not retry_audio:
+                            if old['root'] != str(root):
+                                with self.lock, self.db:
+                                    self._check_included(path)
+                                    self.db.execute('UPDATE files SET root=? WHERE path=?', (str(root), str(path)))
                             if old["kind"] == "image":
                                 with self.lock:
                                     has_thumbnail = self.db.execute("SELECT 1 FROM thumbnails WHERE path=?", (str(path),)).fetchone()
@@ -531,11 +566,16 @@ class Store:
                 if not scan_errors:
                     self._check_cancelled()
                     with self.lock, self.db:
-                        old_paths = self.db.execute("SELECT path FROM files WHERE root=?", (str(root),)).fetchall()
-                        removed = [(r[0],) for r in old_paths if r[0] not in seen or self.config.is_excluded(r[0])]
+                        if selection != self.config.roots or root not in self.config.roots:
+                            continue  # The walk may have delegated folders selected before this edit.
+                        delegated = tuple(p for p in self.config.roots if p != root and p.is_relative_to(root))
+                        old_paths = self.db.execute('SELECT path FROM files WHERE instr(path,?)=1',
+                                                    (str(root).rstrip('/')+'/',)).fetchall()
+                        removed = [(r[0],) for r in old_paths if
+                                   (r[0] not in seen and not covers(r[0],delegated)) or self.config.is_excluded(r[0])]
                         self.db.executemany("DELETE FROM files WHERE path=?", removed)
                         summary["deleted"] += len(removed)
-                    self.failures.prune(root, seen)
+                        self.failures.prune(root, seen, delegated)
             if self.config.enable_photos_library and (self.config.enable_images or self._enabled('video')):
                 self._index_photos(summary, failure_policy, retry_skipped)
             return summary
@@ -821,7 +861,7 @@ class Store:
         with self.lock:
             rows = self.db.execute("""
                 SELECT f.path, f.kind, c.snippet, c.vector, c.start_seconds, c.end_seconds, c.modality,
-                       m.duration_seconds, p.name AS photo_name, p.asset_id FROM chunks c JOIN files f ON f.path=c.path
+                       m.duration_seconds, p.name AS photo_name, p.asset_id FROM chunks c JOIN searchable_files f ON f.path=c.path
                        LEFT JOIN media_files m ON m.path=f.path
                        LEFT JOIN photos_assets p ON p.path=f.path
                 WHERE (?='all' OR f.kind=?)
@@ -843,7 +883,7 @@ class Store:
                                   "matched_modality": row["modality"], "duration_seconds": row["duration_seconds"]}
         results = [r for r in sorted(best.values(), key=lambda r: -r["score"])
                    if (r['source'] == 'photos' and self._photo_enabled(r['kind']))
-                   or (r['source'] == 'file' and not self.config.is_excluded(r['path']) and Path(r['path']).is_file())][:limit]
+                   or (r['source'] == 'file' and covers(r['path'], self.config.roots) and not self.config.is_excluded(r['path']) and Path(r['path']).is_file())][:limit]
         # Decode thumbnails only for returned results, not the whole image library.
         with self.lock:
             for result in results:
