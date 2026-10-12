@@ -346,34 +346,39 @@ def test_owner_loss_before_acquiring_index_lock_remains_monitored(service):
     from contextlib import contextmanager
     client,app,root=service
     (root/'a.txt').write_text('Synthetic text')
-    before_index,enter_index,in_document,release_document=[threading.Event() for _ in range(4)]
+    before_index,enter_index,in_scan,release_scan,observed_loss=[threading.Event() for _ in range(5)]
     alive=[True]
     automatic=app.state.settings.automatic
-    automatic.probe=lambda owner:alive[0]
+    def probe(owner):
+        if not alive[0]:
+            observed_loss.set()
+        return alive[0]
+    automatic.probe=probe
     @contextmanager
     def pin():
         before_index.set()
         assert enter_index.wait(5)
         yield
-    original=app.state.engine.document
-    def document(text):
-        in_document.set()
-        assert release_document.wait(5)
-        return original(text)
+    original_scan=app.state.store._scan
+    def scan(root):
+        in_scan.set()
+        assert release_scan.wait(5)
+        return original_scan(root)
     app.state.engine.pin=pin
-    app.state.engine.document=document
+    app.state.store._scan=scan
     enable(client)
     try:
         automatic.tick(OWNER)
         assert before_index.wait(5)
         alive[0]=False
-        time.sleep(.05)
+        assert observed_loss.wait(5)
+        assert app.state.settings.job.get('interrupt_reason') is None
         enter_index.set()
-        assert in_document.wait(5)
+        assert in_scan.wait(5)
         wait_for(lambda:app.state.settings.job.get('interrupt_reason')=='launcher_closed')
     finally:
         enter_index.set()
-        release_document.set()
+        release_scan.set()
     assert settle(app)['state']=='cancelled'
     assert app.state.store.status()['files']==0
 
