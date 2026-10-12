@@ -27,7 +27,7 @@ Use **Add excluded folders** to add folders without replacing existing exclusion
 
 The settings window starts with one search-index overview: indexed file/vector totals, actual database disk usage (including WAL and embedded previews), counts by content type, and the current scan or last update. Detailed vector, chunk, media segment and performance options are under **Advanced**. Existing indexed files become searchable before a scan finishes. Long media files take longer, so file counts are not a reliable time estimate.
 
-Indexing is explicitly requested. There is no continuous watcher. When settings are saved, **Update Search Index** is the main settings action; **⌘R** also works in settings and search. A scan adds new files, checks size and modification time, hashes changed candidates, reuses vectors for identical content and removes disappeared files from the index. Unchanged files are skipped. Scan counts persist after restarting the engine. Files modified while preserving both size and modification time require a new indexing pipeline or manually changing their timestamp. Use **Update Search Index** after adding or changing files. **Actions → Cancel Indexing** (⌘.) stops at the next safe boundary and preserves completed files and unvisited saved entries. Resume with Update Search Index. Cancel or wait before switching models; excluded folders can still be saved during indexing.
+When automatic updates are off, indexing is explicitly requested. There is no continuous filesystem watcher. When settings are saved, **Update Search Index** is the main settings action; **⌘R** also works in settings and search. A scan adds new files, checks size and modification time, hashes changed candidates, reuses vectors for identical content and removes disappeared files from the index. Unchanged files are skipped. Scan counts persist after restarting the engine. Files modified while preserving both size and modification time require a new indexing pipeline or manually changing their timestamp. Use **Update Search Index** after adding or changing files. **Actions → Cancel Indexing** (⌘.) stops at the next safe boundary and preserves completed files and unvisited saved entries. Resume with Update Search Index. Cancel or wait before switching models; excluded folders can still be saved during indexing.
 
 From version 0.6.2, ordinary updates remember stable skips such as documents without extractable text and files exceeding limits. Edited sources and relevant setting changes are checked again during the next requested update. Temporary failures become eligible for retry after one hour, four hours and then daily; these delays do not schedule a background run. **Actions → Retry Skipped Files** bypasses these delays without rebuilding successful entries. Video scenes remain searchable when only audio decoding fails. Reports distinguish new errors from saved skips and postponed audio retries; the report remains available after an engine restart. The first update of an existing library learns skip reasons and Photos thumbnail metadata; it can still take several minutes. Subsequent unchanged checks avoid reading vector/JPEG payloads and repeating saved unsupported work.
 
@@ -90,9 +90,7 @@ Inference, indexing and previews run locally. Raycast writes temporary JPEG prev
 
 See [Installation](INSTALL.md), [Troubleshooting](TROUBLESHOOTING.md) and [Development](DEVELOPMENT.md).
 
-## Automatic updates — 0.7.0 preview
-
-This feature is implemented on the development branch and is not part of the published 0.6.5 release yet.
+## Automatic updates
 
 In **Manage Library**, enable **Update the index in the background**, choose 30 minutes or 1, 3, 6 or 24 hours, and save. New settings default to 1 hour. **Only while connected to power** is on by default. Automatic updates are off by default; manual **Update Search Index** remains available.
 

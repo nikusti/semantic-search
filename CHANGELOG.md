@@ -2,7 +2,7 @@
 
 The complete published version history is kept here. Earlier installation archives are retired from this repository; use the latest release. Dates are in UTC.
 
-## [0.7.0] - Unreleased
+## [0.7.0] - 2026-10-12
 
 - Add opt-in incremental background updates with 30-minute and 1/3/6/24-hour schedules (1 hour by default) and an external-power condition; off by default.
 - Add persistent pause/resume and cancellation, retain completed files after interruption, and stop launcher-owned jobs when their launcher exits or extension is removed.

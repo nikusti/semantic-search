@@ -71,9 +71,9 @@ npm ci --ignore-scripts
 npm run check
 npm test
 npm run build
-npm run bundle:raycast -- -o ../../semantic-search-v0.6.5.rayext
+npm run bundle:raycast -- -o ../../semantic-search-v0.7.0.rayext
 cd ..
-python scripts/package_release.py --raycast ../semantic-search-v0.6.5.rayext
+python scripts/package_release.py --raycast ../semantic-search-v0.7.0.rayext
 ```
 
 The runtime build also requires Xcode Command Line Tools (Swift, clang, make and pkg-config). It compiles the Core ML bridge and rebuilds PyAV against LGPL-only FFmpeg; `--no-deps` intentionally omits unused GPL codec wheels. Complete native dependency source archives and build recipes accompany binary releases.
@@ -88,7 +88,7 @@ Before uploading, stage the intended source and run `python scripts/check_releas
 
 ## Downloaded-installer smoke test
 
-Run `python scripts/smoke_installer.py --installer /path/to/installer.zip --work /path/to/new-test-folder --models-copy-from /path/to/downloaded/models` on Apple silicon. The work folder must be new and the test port unoccupied. It runs the installer's own core with a minimal system PATH, verifies fresh/repeat installation, and starts the embedded Python engine. Optional built-in model copies exercise synthetic text/photo indexing and search, PDF/photo previews, unchanged-vector reuse, incremental edits/deletion, exclusions, one-minute unloading, restart and model deletion with index preservation. Models are copied with APFS clones, never changed at the source; Complete text/vision Core ML assets and processor checksums are checked before settings are applied. Hugging Face offline mode is enabled; incomplete copies are rejected instead of downloading missing assets. Without model copies, it checks installation and an empty engine only. For the 0.7.0 candidate, an optional `--launcher-owner-report /path/to/local-probe-report.json` also verifies opt-in scheduling, saved pause/resume, due incremental updates, schedule persistence across restarts and rejection of a removed synthetic extension. The report must come from a currently running native launcher; only the test's synthetic marker folder and independent storage are changed.
+Run `python scripts/smoke_installer.py --installer /path/to/installer.zip --work /path/to/new-test-folder --models-copy-from /path/to/downloaded/models` on Apple silicon. The work folder must be new and the test port unoccupied. It runs the installer's own core with a minimal system PATH, verifies fresh/repeat installation, and starts the embedded Python engine. Optional built-in model copies exercise synthetic text/photo indexing and search, PDF/photo previews, unchanged-vector reuse, incremental edits/deletion, exclusions, one-minute unloading, restart and model deletion with index preservation. Models are copied with APFS clones, never changed at the source; Complete text/vision Core ML assets and processor checksums are checked before settings are applied. Hugging Face offline mode is enabled; incomplete copies are rejected instead of downloading missing assets. Without model copies, it checks installation and an empty engine only. For version 0.7.0, an optional `--launcher-owner-report /path/to/local-probe-report.json` also verifies opt-in scheduling, saved pause/resume, due incremental updates, schedule persistence across restarts and rejection of a removed synthetic extension. The report must come from a currently running native launcher; only the test's synthetic marker folder and independent storage are changed.
 
 This is fresh isolated storage on the test Mac, not a separate macOS account or factory-clean device. A Gatekeeper assessment is separate: unsigned installer opening can require user approval.
 
@@ -125,13 +125,13 @@ After every release, review the repository description, README, installation gui
 
 CI runs documentation checks on changes and again when a GitHub release is published. Automated checks supplement this review; they do not judge every prose claim.
 
-## Companion and Store preview builds
+## Companion and Store builds
 
 Version 0.5.0 includes an unsigned companion installer and a Store preparation package. Its native installer and small Store package are built with `scripts/build_installer.py` and `scripts/build_store.py`; see [Store packaging](STORE.md) for the ordered build, signing and validation steps. The Store package reuses the same Search/Manage Library components, rather than maintaining a second engine. Model downloads and existing index identities are unchanged.
 
 Run the generated Store package's official `npm run build` and `npm run lint`. The author must be the actual Raycast username, not necessarily the GitHub handle. A local development build does not publish anything. Clearly disclose unsigned companion distribution during Store review. Never submit private test data. Developer ID signing/notarization improve macOS installation but are not a documented prerequisite for submitting a Raycast PR.
 
-## Automatic indexing candidate
+## Automatic indexing
 
 The 0.7.0 `automatic-index` command is a short no-view background command with a 15-minute launcher interval. It checks opt-in preferences and asks the engine to start a due pass. It never waits for indexing or runs installation/preparation. Launcher activation is explicit. The default bundled service reads its saved opt-in state before starting; a custom local service supplies its own preferences.
 

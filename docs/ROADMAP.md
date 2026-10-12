@@ -1,38 +1,23 @@
 # Roadmap
 
-## In review: Store installation
+## Store publication — awaiting review
 
-- Keep one engine and UI codebase, with bundled ZIP and small Store packages.
-- Version 0.5.0 includes the native companion installer and small Store source package. Python and required libraries are included; no developer toolchain or terminal steps for users.
-- Installation/update recovery, Store discovery, launcher UI, synthetic search, build/lint and screenshot checks passed. Independent privacy/license reviews were completed before publication. A factory-clean Mac or separate-account test remains additional validation.
-- [Raycast Store PR #32190](https://github.com/raycast/extensions/pull/32190) is submitted and awaiting review. Handle feedback in that PR. The companion is currently unsigned; Developer ID signing/notarization is a future installation improvement.
+[Raycast Store PR #32190](https://github.com/raycast/extensions/pull/32190) targets the same 0.7.0 engine and shared launcher UI as the bundled ZIP. Automated checks and human acceptance are separate steps. Continue handling feedback in that PR.
 
-## Next development
+One codebase produces two packages: a bundled ZIP and a small Store extension with a separately installed native companion. The companion includes Python and decoders; users need no terminal setup. Developer ID signing/notarization remain an installation improvement. A factory-clean Mac or separate-account test is additional validation.
 
-### Apple Photos and iCloud library — released in 0.6.0
+## Delivered
 
-Version 0.6.0 includes the native PhotoKit importer for photographs and videos, optional iCloud downloads, incremental updates/cancellation, bounded temporary files and previews, full-resolution clipboard copying and creation dates. Both MLX and Core ML use the shared scene/soundtrack pipeline. Partial video soundtracks can be retried without rebuilding completed scenes. Text searches use saved vectors without loading media encoders.
+- Apple Photos/iCloud photographs, video scenes and optional soundtracks: 0.6.0, with local processing, permission controls, creation dates and full-resolution photo copying.
+- Faster incremental scans, saved skip reasons and delayed temporary retries: 0.6.2.
+- Additive folder selection and source removal with optional index cleanup: 0.6.3, followed by independently reviewed settings/source fixes in 0.6.4.
+- A small preference for photos over similarly matching video scenes: 0.6.5.
+- Opt-in scheduled updates, external-power conditions, persistent pause/resume/cancel and launcher lifetime controls: 0.7.0. Both launchers share scheduling; no LaunchAgent is installed. Existing model indexes and vectors are reused.
 
-Independent source review, isolated installer tests with both models, a real 1,000-photo/50-video comparison and a complete library import with 100 retrieval queries have been completed locally. Phone-video orientation, cancellation, exclusions, originals preservation and index-preserving model deletion are covered by regressions. Version 0.6.0 installation packages include these changes. The Store submission targets the matching published 0.6.4 companion payload and shared launcher UI.
+See [version history](../CHANGELOG.md) and [automatic update behavior](USAGE.md#automatic-updates) for details.
 
-### Incremental indexing improvements — released in 0.6.2
+## Further validation and improvements
 
-Version 0.6.2 uses compact Photos metadata for unchanged checks, persists stable skip reasons, backs off temporary failures, and offers explicit retries. Video scenes are preserved independently of audio decoding failures. Isolated full-library tests, unchanged-vector integrity checks, installer tests with both models, and 162 engine/extension regressions passed. Existing model identities and vectors stay compatible.
-
-### Folder management — released in 0.6.3
-
-Version 0.6.3 adds cumulative folder selection, a visible source list and removal with optional index cleanup. Root-only edits preserve the current database; saved entries can be retained for reuse without remaining searchable. Nested sources and active indexing are protected.
-
-### Review follow-up — released in 0.6.4
-
-Independent backend and launcher reviewers reproduced settings-request races, retained nested-source cleanup, offline-source validation and image/video content-toggle combinations. The fixes and regression coverage passed repeated independent review, full engine/extension checks and isolated package tests with both models. Version 0.6.4 preserves existing vectors; earlier release archives remain unchanged.
-
-### Photo preference — released in 0.6.5
-
-All Files prefers photographs over video scenes within a small similarity margin. Stronger video matches, explicit filters, document/audio positions and original segment timestamps are preserved. Existing vectors stay compatible.
-
-### Automatic incremental indexing
-
-Version 0.7.0 is being tested with opt-in background commands supported by both launchers, without a separate LaunchAgent. Keep one incremental engine, charging/schedule conditions, pause/resume/cancel, and manual Update Search Index. Automatic jobs must stop when their launcher exits or their extension is removed, recover from sleep/restart using committed entries, and avoid duplicate work across hosts.
-
-The candidate implements shared scheduling, power checks and persistent pause/resume/cancel. Independent backend and UI reviews have completed; packaging and native launcher validation are the remaining gates before release. Automatic indexing is not in the published 0.6.5 package yet. The Store submission targets the published 0.6.4 companion release. Automated checks and human review remain separate acceptance steps. Continue handling reviewer feedback in the existing PR.
+- Test physical sleep/wake and charger changes on a separate test Mac; simulated transitions and native launcher checks are covered.
+- Evaluate a progress watchdog for unusually stalled indexing beyond the existing operation-specific timeouts.
+- Consider native Tinycast integration while keeping the same engine, model revisions and index format.

@@ -47,3 +47,9 @@ For source installation, developer CLI commands and packaging instructions, see 
 ## macOS blocks the companion installer
 
 The optional companion installer has no Apple Developer ID signature or notarization. Gatekeeper can reject normal opening of a downloaded copy. Follow [Apple's opening-app guidance](https://support.apple.com/en-us/102445) to explicitly approve a trusted download, or use the ready-to-use bundled extension ZIP. No global security setting needs to be disabled. This companion installer is not required for the bundled ZIP.
+
+## Automatic updates do not run
+
+Automatic updates are off by default. Enable them in Manage Library, save, and run **Actions → Activate Background Checks** once in each launcher after reinstalling. Keep the launcher running and ensure its own Background Refresh switch is enabled. A closed search window is fine; a fully quit launcher cannot schedule work.
+
+Check the selected interval, pause status and **Only while connected to power** condition. Launcher timing is approximate: overdue updates run on the next eligible check, rather than waiting a new full interval. Download a missing model or open Search once if the engine needs setup; background checks never install or prepare models. See [automatic updates](USAGE.md#automatic-updates).
