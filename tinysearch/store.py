@@ -16,6 +16,7 @@ from . import media
 from . import photos
 from .index_failures import FailureCache, UnsupportedContent, policy, summarize_skip
 from .folders import covers, walk_includes
+from .ranking import rank_results
 
 PHOTOS_AUDIO_PENDING = 'audio-pending:'
 
@@ -886,9 +887,10 @@ class Store:
                                   "score": float(score), "snippet": row["snippet"][:1200],
                                   "start_seconds": row["start_seconds"], "end_seconds": row["end_seconds"],
                                   "matched_modality": row["modality"], "duration_seconds": row["duration_seconds"]}
-        results = [r for r in sorted(best.values(), key=lambda r: -r["score"])
+        visible = [r for r in best.values()
                    if (r['source'] == 'photos' and self._photo_enabled(r['kind']))
-                   or (r['source'] == 'file' and any(walk_includes(r['path'], root) for root in self.config.roots) and not self.config.is_excluded(r['path']) and Path(r['path']).is_file())][:limit]
+                   or (r['source'] == 'file' and any(walk_includes(r['path'], root) for root in self.config.roots) and not self.config.is_excluded(r['path']) and Path(r['path']).is_file())]
+        results = rank_results(visible, file_kind)[:limit]
         # Decode thumbnails only for returned results, not the whole image library.
         with self.lock:
             for result in results:

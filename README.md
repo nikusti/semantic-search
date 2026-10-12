@@ -58,6 +58,8 @@ The default index uses **512-dimensional float32 vectors** (2,048 bytes each). â
 - **Update Search Index** adds new/changed files, reuses unchanged vectors and removes deleted files. Version 0.6.2 remembers skip reasons and postpones temporary failures; **Retry Skipped Files** checks them immediately. Updates remain manual.
 - **Apple Photos** indexes photographs, video scenes and optional soundtracks with either MLX or Core ML. Enable the source in Model Settings, connect it in Actions and grant macOS permission. iCloud downloads are optional and off by default. Originals stay in Photos; the engine retains vectors and small previews. Results open in Photos, show creation dates and offer **Copy Photo** at full resolution. See [Apple Photos](docs/APPLE_PHOTOS.md).
 - **Search folders** form an additive list. Add more folders without replacing existing ones. Remove a source to hide it from search; optionally delete its saved index entries. Folder changes preserve the current database and existing vectors.
+
+- **All Files** gives photos a small preference over similarly matching video scenes. Clearly stronger video matches still rank higher; documents and sounds keep their positions. Choose **Videos** for video-only results. This preference does not change saved vectors or require reindexing.
 - Folder exclusions include subfolders. They can be saved during indexing and remove those records/previews from saved indexes without deleting files.
 - Both launchers use **`~/Library/Application Support/Semantic Search/`** for models, indexes, settings and local logs. The local service listens only on loopback and rejects browser-origin requests; other local processes can access it.
 

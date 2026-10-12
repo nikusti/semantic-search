@@ -2,6 +2,10 @@
 
 The complete published version history is kept here. Earlier installation archives are retired from this repository; use the latest release. Dates are in UTC.
 
+## [0.6.5] - Unreleased
+
+- Prefer photos over video scenes within a 0.03 cosine-similarity margin in All Files. Preserve stronger video matches, raw scores, document/audio positions, best-segment timestamps and explicit content filters; existing vectors need no rebuilding.
+
 ## [0.6.4] - 2026-10-12
 
 - Preserve folder additions made while a full settings request is pending, and keep a newer folder removal's explicit index-deletion choice.
