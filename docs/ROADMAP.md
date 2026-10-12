@@ -13,7 +13,7 @@
 
 Version 0.6.0 includes the native PhotoKit importer for photographs and videos, optional iCloud downloads, incremental updates/cancellation, bounded temporary files and previews, full-resolution clipboard copying and creation dates. Both MLX and Core ML use the shared scene/soundtrack pipeline. Partial video soundtracks can be retried without rebuilding completed scenes. Text searches use saved vectors without loading media encoders.
 
-Independent source review, isolated installer tests with both models, a real 1,000-photo/50-video comparison and a complete library import with 100 retrieval queries have been completed locally. Phone-video orientation, cancellation, exclusions, originals preservation and index-preserving model deletion are covered by regressions. Version 0.6.0 installation packages include these changes. The pending Store submission now targets the matching 0.6.1 companion payload and launcher UI.
+Independent source review, isolated installer tests with both models, a real 1,000-photo/50-video comparison and a complete library import with 100 retrieval queries have been completed locally. Phone-video orientation, cancellation, exclusions, originals preservation and index-preserving model deletion are covered by regressions. Version 0.6.0 installation packages include these changes. The Store submission is being updated to the matching 0.6.4 companion payload and shared launcher UI.
 
 ### Incremental indexing improvements — released in 0.6.2
 
@@ -23,12 +23,12 @@ Version 0.6.2 uses compact Photos metadata for unchanged checks, persists stable
 
 Version 0.6.3 adds cumulative folder selection, a visible source list and removal with optional index cleanup. Root-only edits preserve the current database; saved entries can be retained for reuse without remaining searchable. Nested sources and active indexing are protected.
 
-### Review follow-up — pending in 0.6.4
+### Review follow-up — released in 0.6.4
 
-Independent backend and launcher reviewers reproduced settings-request races, retained nested-source cleanup, offline-source validation and image/video content-toggle combinations. The fixes and regression coverage have passed repeated review locally; published 0.6.3 archives and the installed engine remain unchanged. Complete package validation before publishing the next patch or updating the Store PR.
+Independent backend and launcher reviewers reproduced settings-request races, retained nested-source cleanup, offline-source validation and image/video content-toggle combinations. The fixes and regression coverage passed repeated independent review, full engine/extension checks and isolated package tests with both models. Version 0.6.4 preserves existing vectors; earlier release archives remain unchanged.
 
 ### Automatic incremental indexing
 
 Version 0.7.0 is planned to use opt-in background commands supported by both launchers, without a separate LaunchAgent. Keep one incremental engine, charging/schedule conditions, pause/resume/cancel, and manual Update Search Index. Automatic jobs must stop when their launcher exits or their extension is removed, recover from sleep/restart using committed entries, and avoid duplicate work across hosts.
 
-Automatic indexing remains queued. The Store submission has been updated to the published 0.6.1 companion release. Continue handling reviewer feedback in the existing PR.
+Automatic indexing remains queued. The Store submission is being updated to the published 0.6.4 companion release. Continue handling reviewer feedback in the existing PR.

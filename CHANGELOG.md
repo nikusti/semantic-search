@@ -2,7 +2,7 @@
 
 The complete published version history is kept here. Earlier installation archives are retired from this repository; use the latest release. Dates are in UTC.
 
-## [0.6.4] - Unreleased
+## [0.6.4] - 2026-10-12
 
 - Preserve folder additions made while a full settings request is pending, and keep a newer folder removal's explicit index-deletion choice.
 - Explain and defer removal of a submitted source until model setup accepts it; do not show a removal that completion polling would undo.

@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import shutil
 import socket
 import time
 import urllib.error
@@ -175,24 +176,44 @@ for name, entry in MANIFEST['processor']['files'].items():
             sibling = work / 'second-source'
             sibling.mkdir(exist_ok=True)
             (sibling / 'note.txt').write_text('Another searchable source with a spring gardening checklist.')
+            shutil.copyfile(fixtures / 'orange-circle.png', sibling / 'photo.png')
             request('folders/add', {'paths': [str(sibling)]})
             assert set(request('settings')['current']['roots']) == {str(fixtures), str(sibling)}
             request('index/start', {}); settle()
-            assert request('status')['files'] == 5
+            assert request('status')['files'] == 6
+            offline = work / 'offline-source'
+            sibling.rename(offline)
+            thumbnail_values = request('settings')['current']
+            thumbnail_pixels = 128 if thumbnail_values['thumbnail_px'] != 128 else 256
+            request('settings', {**thumbnail_values, 'thumbnail_px': thumbnail_pixels}); settle()
+            assert request('settings')['current']['thumbnail_px'] == thumbnail_pixels
             request('folders/remove', {'path': str(sibling)})
-            assert request('status')['files'] == 4 and request('status')['retained_files'] == 1
+            assert request('status')['files'] == 4 and request('status')['retained_files'] == 2
+            offline.rename(sibling)
             assert not any(item['path'].startswith(str(sibling)+'/') for item in
                            request('search', {'query': 'gardening', 'limit': 8})['results'])
             request('folders/add', {'paths': [str(sibling)]})
             request('index/start', {}); settle()
-            assert request('status')['last_index_summary']['unchanged'] == 5
+            assert request('status')['last_index_summary']['unchanged'] == 6
             assert request('status')['last_index_summary']['indexed'] == 0
             cleaned = request('folders/remove', {'path': str(sibling), 'delete_saved_index': True})
-            assert cleaned['cleanup_pending'] == 0 and cleaned['deleted_entries'] >= 1
+            assert cleaned['cleanup_pending'] == 0 and cleaned['deleted_entries'] >= 2
             assert request('status')['files'] == 4 and request('status')['retained_files'] == 0
             assert (sibling / 'note.txt').exists()
+            selected = request('settings')['current']
+            request('settings', {**selected, 'enable_video': True}); settle()
+            assert request('status')['files'] == 4
+            request('settings', {**request('settings')['current'], 'enable_images': False}); settle()
+            assert request('status')['files'] == 2
+            assert all(item['kind'] == 'document' for item in
+                       request('search', {'query': 'an orange circle', 'limit': 8})['results'])
+            request('settings', selected); settle()
+            assert request('status')['files'] == 4
+            request('index/start', {}); settle()
+            assert request('status')['last_index_summary']['unchanged'] == 4
+            assert request('status')['last_index_summary']['indexed'] == 0
             backend_reports.append({'model': variant, 'search_seconds': elapsed, 'files': 4, 'vectors': before})
-            print(f'{variant}: text/photo search, previews, cumulative sources, removal/cleanup and unchanged reuse passed.', flush=True)
+            print(f'{variant}: search/previews, cumulative/offline sources, removal/cleanup, image/video switches and unchanged reuse passed.', flush=True)
         if args.models_copy_from: assert len(backend_reports) == 2, 'Both built-in model copies must be available'
         report['backends'] = backend_reports
         if backend_reports:
