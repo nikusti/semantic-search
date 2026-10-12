@@ -30,7 +30,7 @@ Examples shown in Tinycast. The document and audio examples use synthetic test f
 
 ## Install
 
-Requires **Apple silicon and macOS 26+**. The [v0.6.4 release](https://github.com/nikusti/semantic-search/releases/tag/v0.6.5) includes Python and the required libraries: no Homebrew, pip or terminal setup.
+Requires **Apple silicon and macOS 26+**. The [v0.6.5 release](https://github.com/nikusti/semantic-search/releases/tag/v0.6.5) includes Python and the required libraries: no Homebrew, pip or terminal setup.
 
 1. Download and extract **semantic-search-v0.6.5.zip**.
 2. Add the extracted **Semantic Search** folder in Tinycast's extension settings, or use **Import Extension** in Raycast.
