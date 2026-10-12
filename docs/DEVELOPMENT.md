@@ -71,9 +71,9 @@ npm ci --ignore-scripts
 npm run check
 npm test
 npm run build
-npm run bundle:raycast -- -o ../../semantic-search-v0.6.1.rayext
+npm run bundle:raycast -- -o ../../semantic-search-v0.6.2.rayext
 cd ..
-python scripts/package_release.py --raycast ../semantic-search-v0.6.1.rayext
+python scripts/package_release.py --raycast ../semantic-search-v0.6.2.rayext
 ```
 
 The runtime build also requires Xcode Command Line Tools (Swift, clang, make and pkg-config). It compiles the Core ML bridge and rebuilds PyAV against LGPL-only FFmpeg; `--no-deps` intentionally omits unused GPL codec wheels. Complete native dependency source archives and build recipes accompany binary releases.

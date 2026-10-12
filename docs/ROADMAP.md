@@ -15,12 +15,12 @@ Version 0.6.0 includes the native PhotoKit importer for photographs and videos, 
 
 Independent source review, isolated installer tests with both models, a real 1,000-photo/50-video comparison and a complete library import with 100 retrieval queries have been completed locally. Phone-video orientation, cancellation, exclusions, originals preservation and index-preserving model deletion are covered by regressions. Version 0.6.0 installation packages include these changes. The pending Store submission now targets the matching 0.6.1 companion payload and launcher UI.
 
-### Incremental indexing improvements — 0.6.2 in development
+### Incremental indexing improvements — released in 0.6.2
 
-Use compact Photos metadata for unchanged checks, persist stable skip reasons, back off temporary failures, and offer explicit retries. Preserve video scenes independently of audio decoding failures. Validate on isolated copies of the full library before enabling a schedule. Existing model identities and vectors stay compatible.
+Version 0.6.2 uses compact Photos metadata for unchanged checks, persists stable skip reasons, backs off temporary failures, and offers explicit retries. Video scenes are preserved independently of audio decoding failures. Isolated full-library tests, unchanged-vector integrity checks, installer tests with both models, and 162 engine/extension regressions passed. Existing model identities and vectors stay compatible.
 
 ### Automatic incremental indexing
 
-Design an optional schedule or watcher that updates new, changed and deleted files using the existing incremental scanner. Respect exclusions, cancellation, power/battery limits and model unloading. Keep manual Update Search Index available. Decide between a lightweight macOS mechanism and an agent only after measuring the requirements.
+Version 0.7.0 is planned to use opt-in background commands supported by both launchers, without a separate LaunchAgent. Keep one incremental engine, charging/schedule conditions, pause/resume/cancel, and manual Update Search Index. Automatic jobs must stop when their launcher exits or their extension is removed, recover from sleep/restart using committed entries, and avoid duplicate work across hosts.
 
 Automatic indexing remains queued. The Store submission has been updated to the published 0.6.1 companion release. Continue handling reviewer feedback in the existing PR.

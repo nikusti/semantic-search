@@ -30,9 +30,9 @@ Examples shown in Tinycast. The document and audio examples use synthetic test f
 
 ## Install
 
-Requires **Apple silicon and macOS 26+**. The [v0.6.1 release](https://github.com/nikusti/semantic-search/releases/tag/v0.6.1) includes Python and the required libraries: no Homebrew, pip or terminal setup.
+Requires **Apple silicon and macOS 26+**. The [v0.6.2 release](https://github.com/nikusti/semantic-search/releases/tag/v0.6.2) includes Python and the required libraries: no Homebrew, pip or terminal setup.
 
-1. Download and extract **semantic-search-v0.6.1.zip**.
+1. Download and extract **semantic-search-v0.6.2.zip**.
 2. Add the extracted **Semantic Search** folder in Tinycast's extension settings, or use **Import Extension** in Raycast.
 3. Open **Semantic Search Model Settings**, choose folders and content types, then **Download & Apply**.
 4. Open **Semantic Search** and describe a file. Files become searchable while indexing continues.
@@ -55,7 +55,7 @@ The default index uses **512-dimensional float32 vectors** (2,048 bytes each). â
 
 ## Your library
 
-- **Update Search Index** adds new/changed files, reuses unchanged vectors and removes deleted files. Updates are manual; no background schedule is enabled.
+- **Update Search Index** adds new/changed files, reuses unchanged vectors and removes deleted files. Version 0.6.2 remembers skip reasons and postpones temporary failures; **Retry Skipped Files** checks them immediately. Updates remain manual.
 - **Apple Photos** indexes photographs, video scenes and optional soundtracks with either MLX or Core ML. Enable the source in Model Settings, connect it in Actions and grant macOS permission. iCloud downloads are optional and off by default. Originals stay in Photos; the engine retains vectors and small previews. Results open in Photos, show creation dates and offer **Copy Photo** at full resolution. See [Apple Photos](docs/APPLE_PHOTOS.md).
 - Folder exclusions include subfolders. They can be saved during indexing and remove those records/previews from saved indexes without deleting files.
 - Both launchers use **`~/Library/Application Support/Semantic Search/`** for models, indexes, settings and local logs. The local service listens only on loopback and rejects browser-origin requests; other local processes can access it.

@@ -2,7 +2,7 @@
 
 The complete published version history is kept here. Earlier installation archives are retired from this repository; use the latest release. Dates are in UTC.
 
-## [0.6.2] - Unreleased
+## [0.6.2] - 2026-10-12
 
 - Check unchanged Photos using compact metadata without reading saved vectors or JPEG payloads. Learn legacy thumbnail metadata once and avoid repeatedly regenerating small representations.
 - Persist stable indexing limitations until the source or relevant settings change. Back off temporary failures for one hour, four hours and then daily.
