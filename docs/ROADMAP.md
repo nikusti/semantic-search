@@ -23,6 +23,10 @@ Version 0.6.2 uses compact Photos metadata for unchanged checks, persists stable
 
 Version 0.6.3 adds cumulative folder selection, a visible source list and removal with optional index cleanup. Root-only edits preserve the current database; saved entries can be retained for reuse without remaining searchable. Nested sources and active indexing are protected.
 
+### Review follow-up — pending in 0.6.4
+
+Independent backend and launcher reviewers reproduced settings-request races, retained nested-source cleanup, offline-source validation and image/video content-toggle combinations. The fixes and regression coverage have passed repeated review locally; published 0.6.3 archives and the installed engine remain unchanged. Complete package validation before publishing the next patch or updating the Store PR.
+
 ### Automatic incremental indexing
 
 Version 0.7.0 is planned to use opt-in background commands supported by both launchers, without a separate LaunchAgent. Keep one incremental engine, charging/schedule conditions, pause/resume/cancel, and manual Update Search Index. Automatic jobs must stop when their launcher exits or their extension is removed, recover from sleep/restart using committed entries, and avoid duplicate work across hosts.

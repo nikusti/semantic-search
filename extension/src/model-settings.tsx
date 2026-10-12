@@ -147,8 +147,12 @@ export default function ModelSettings({
   const [exclusionError, setExclusionError] = useState("");
   const [photosMessage, setPhotosMessage] = useState("");
   const [connectingPhotos, setConnectingPhotos] = useState(false);
-  const [folderToRemove, setFolderToRemove] = useState("");
-  const [deleteFolderIndex, setDeleteFolderIndex] = useState(false);
+  const [folderRemoval, setFolderRemoval] = useState({
+    path: "",
+    deleteSaved: false,
+  });
+  const folderToRemove = folderRemoval.path;
+  const deleteFolderIndex = folderRemoval.deleteSaved;
   const [savingFolders, setSavingFolders] = useState(false);
   const addedFolders = useRef<string[]>([]);
   const submittedFolders = useRef<string[]>([]);
@@ -653,6 +657,15 @@ export default function ModelSettings({
     const path = folderToRemove;
     const saved = (settings?.current.roots as string[])?.includes(path);
     if (!saved) {
+      if (submittedValues.current?.roots.includes(path)) {
+        await showToast({
+          style: Toast.Style.Failure,
+          title: "This folder is being applied",
+          message:
+            "Wait for model setup to apply this folder, then remove it. Your removal has not been applied.",
+        });
+        return;
+      }
       addedFolders.current = addedFolders.current.filter(
         (root) => root !== path,
       );
@@ -664,8 +677,7 @@ export default function ModelSettings({
             }
           : previous,
       );
-      setFolderToRemove("");
-      setDeleteFolderIndex(false);
+      setFolderRemoval({ path: "", deleteSaved: false });
       return;
     }
     pollGuard.current.begin();
@@ -694,8 +706,9 @@ export default function ModelSettings({
             }
           : previous,
       );
-      setFolderToRemove((previous) => (previous === path ? "" : previous));
-      setDeleteFolderIndex(false);
+      setFolderRemoval((previous) =>
+        previous.path === path ? { path: "", deleteSaved: false } : previous,
+      );
       await showToast({
         style: data.cleanup_pending ? Toast.Style.Failure : Toast.Style.Success,
         title: "Search folder removed",
@@ -866,6 +879,7 @@ export default function ModelSettings({
     }
     pollGuard.current.begin();
     setApplyingSettings(true);
+    const pendingFolders = [...addedFolders.current];
     try {
       const response = await fetch(`${baseURL}/v1/settings`, {
         method: "POST",
@@ -889,7 +903,7 @@ export default function ModelSettings({
       if (!response.ok)
         throw new Error(data.detail || "Could not apply settings");
       submittedValues.current = values;
-      submittedFolders.current = [...addedFolders.current];
+      submittedFolders.current = pendingFolders;
       setSettings((previous) =>
         previous ? { ...previous, job: data } : previous,
       );
@@ -1162,8 +1176,7 @@ export default function ModelSettings({
         allowMultipleSelection={true}
         value={[]}
         onChange={(folders) => {
-          setFolderToRemove("");
-          setDeleteFolderIndex(false);
+          setFolderRemoval({ path: "", deleteSaved: false });
           addedFolders.current = addExclusionFolders(
             addedFolders.current,
             folders.filter(
@@ -1186,8 +1199,7 @@ export default function ModelSettings({
           title="Remove a Folder"
           value={folderToRemove}
           onChange={(path) => {
-            setFolderToRemove(path);
-            setDeleteFolderIndex(false);
+            setFolderRemoval({ path, deleteSaved: false });
           }}
         >
           <Form.Dropdown.Item value="" title="Choose a folder…" />
@@ -1203,7 +1215,9 @@ export default function ModelSettings({
               id="delete_folder_index"
               label="Delete this folder's saved index entries"
               value={deleteFolderIndex}
-              onChange={setDeleteFolderIndex}
+              onChange={(deleteSaved) =>
+                setFolderRemoval((previous) => ({ ...previous, deleteSaved }))
+              }
             />
           )}
           <Form.Description text="Use the removal action below. Saved entries are kept by default. Other selected folders still include their subfolders. Original files are never deleted." />

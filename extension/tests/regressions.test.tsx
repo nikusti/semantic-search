@@ -25,6 +25,203 @@ function folderList(view: ReactTestRenderer): string {
   )[0].props.text;
 }
 
+test("full Apply preserves folders selected after the submitted snapshot", async (t) => {
+  launcher.serviceURL = "http://127.0.0.1:18799";
+  let poll!: () => void;
+  let posted!: typeof current;
+  let server = current;
+  const pending = deferred<Response>();
+  t.mock.method(globalThis, "setInterval", (callback: () => void) => {
+    poll = callback;
+    return 1;
+  });
+  t.mock.method(globalThis, "clearInterval", () => {});
+  t.mock.method(
+    globalThis,
+    "fetch",
+    async (url: string, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        posted = JSON.parse(String(init.body));
+        return pending.promise;
+      }
+      return response(url.endsWith("/v1/settings") ? snapshot(server) : status);
+    },
+  );
+  let view!: ReactTestRenderer;
+  try {
+    await act(async () => {
+      view = create(createElement(ModelSettings));
+    });
+    await act(async () =>
+      field(view, "FilePicker", "roots").props.onChange(["/private/tmp/b"]),
+    );
+    await act(async () =>
+      field(view, "Checkbox", "enable_images").props.onChange(false),
+    );
+    let request!: Promise<void>;
+    await act(async () => {
+      request = field(view, "SubmitForm").props.onSubmit();
+    });
+    assert.deepEqual(posted.roots, [...current.roots, "/private/tmp/b"]);
+    await act(async () =>
+      field(view, "FilePicker", "roots").props.onChange(["/private/tmp/c"]),
+    );
+    await act(async () => {
+      pending.resolve(response({ state: "applying" }));
+      await request;
+    });
+    server = { ...current, ...posted };
+    await act(async () => poll());
+    assert.deepEqual(folderList(view).split("\n"), [
+      ...current.roots,
+      "/private/tmp/b",
+      "/private/tmp/c",
+    ]);
+    assert.equal(field(view, "SubmitForm").props.title, "Save Search Folders");
+  } finally {
+    await act(async () => view?.unmount());
+  }
+});
+
+test("removal completion preserves a newer folder and its explicit purge choice", async (t) => {
+  launcher.serviceURL = "http://127.0.0.1:18799";
+  const selected = { ...current, roots: ["/private/tmp/a", "/private/tmp/b"] };
+  const pending = deferred<Response>();
+  t.mock.method(globalThis, "setInterval", () => 1);
+  t.mock.method(globalThis, "clearInterval", () => {});
+  t.mock.method(
+    globalThis,
+    "fetch",
+    async (url: string, init?: RequestInit) => {
+      if (init?.method === "POST") return pending.promise;
+      return response(
+        url.endsWith("/v1/settings") ? snapshot(selected) : status,
+      );
+    },
+  );
+  let view!: ReactTestRenderer;
+  try {
+    await act(async () => {
+      view = create(createElement(ModelSettings));
+    });
+    await act(async () =>
+      field(view, "Dropdown", "folder_to_remove").props.onChange(
+        selected.roots[0],
+      ),
+    );
+    let request!: Promise<void>;
+    await act(async () => {
+      request = field(view, "SubmitForm").props.onSubmit();
+    });
+    await act(async () =>
+      field(view, "Dropdown", "folder_to_remove").props.onChange(
+        selected.roots[1],
+      ),
+    );
+    await act(async () =>
+      field(view, "Checkbox", "delete_folder_index").props.onChange(true),
+    );
+    await act(async () => {
+      pending.resolve(
+        response({
+          roots: [selected.roots[1]],
+          deleted_entries: 0,
+          cleanup_pending: 0,
+        }),
+      );
+      await request;
+    });
+    assert.equal(
+      field(view, "Dropdown", "folder_to_remove").props.value,
+      selected.roots[1],
+    );
+    assert.equal(
+      field(view, "Checkbox", "delete_folder_index").props.value,
+      true,
+    );
+    assert.equal(
+      field(view, "SubmitForm").props.title,
+      "Remove Folder & Delete Index",
+    );
+  } finally {
+    await act(async () => view?.unmount());
+  }
+});
+
+test("a submitted folder cannot appear removed before setup has accepted it", async (t) => {
+  launcher.serviceURL = "http://127.0.0.1:18799";
+  launcher.toasts.length = 0;
+  let server = current;
+  let poll!: () => void;
+  const posts: string[] = [];
+  t.mock.method(globalThis, "setInterval", (callback: () => void) => {
+    poll = callback;
+    return 1;
+  });
+  t.mock.method(globalThis, "clearInterval", () => {});
+  t.mock.method(
+    globalThis,
+    "fetch",
+    async (url: string, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        posts.push(url);
+        if (url.endsWith("/v1/settings"))
+          return response({ state: "applying" });
+        assert.ok(url.endsWith("/v1/folders/remove"));
+        server = { ...server, roots: current.roots };
+        return response({
+          roots: current.roots,
+          deleted_entries: 0,
+          cleanup_pending: 0,
+        });
+      }
+      return response(url.endsWith("/v1/settings") ? snapshot(server) : status);
+    },
+  );
+  let view!: ReactTestRenderer;
+  try {
+    await act(async () => {
+      view = create(createElement(ModelSettings));
+    });
+    await act(async () =>
+      field(view, "FilePicker", "roots").props.onChange(["/private/tmp/b"]),
+    );
+    await act(async () =>
+      field(view, "Checkbox", "enable_images").props.onChange(false),
+    );
+    await act(async () => field(view, "SubmitForm").props.onSubmit());
+    await act(async () =>
+      field(view, "Dropdown", "folder_to_remove").props.onChange(
+        "/private/tmp/b",
+      ),
+    );
+    await act(async () => field(view, "SubmitForm").props.onSubmit());
+    assert.equal(posts.length, 1);
+    assert.deepEqual(folderList(view).split("\n"), [
+      ...current.roots,
+      "/private/tmp/b",
+    ]);
+    assert.ok(
+      launcher.toasts.some(
+        (toast) => toast.title === "This folder is being applied",
+      ),
+    );
+    server = {
+      ...current,
+      roots: [...current.roots, "/private/tmp/b"],
+      enable_images: false,
+    };
+    await act(async () => poll());
+    await act(async () => field(view, "SubmitForm").props.onSubmit());
+    assert.equal(posts.length, 2);
+    assert.deepEqual(folderList(view).split("\n"), current.roots);
+    await act(async () => poll());
+    assert.deepEqual(folderList(view).split("\n"), current.roots);
+  } finally {
+    await act(async () => view?.unmount());
+  }
+});
+
 test("native folder additions accumulate across picker opens and save only additions", async (t) => {
   launcher.serviceURL = "http://127.0.0.1:18799";
   t.mock.method(globalThis, "setInterval", () => 1);

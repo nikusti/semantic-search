@@ -71,9 +71,9 @@ npm ci --ignore-scripts
 npm run check
 npm test
 npm run build
-npm run bundle:raycast -- -o ../../semantic-search-v0.6.3.rayext
+npm run bundle:raycast -- -o ../../semantic-search-v0.6.4.rayext
 cd ..
-python scripts/package_release.py --raycast ../semantic-search-v0.6.3.rayext
+python scripts/package_release.py --raycast ../semantic-search-v0.6.4.rayext
 ```
 
 The runtime build also requires Xcode Command Line Tools (Swift, clang, make and pkg-config). It compiles the Core ML bridge and rebuilds PyAV against LGPL-only FFmpeg; `--no-deps` intentionally omits unused GPL codec wheels. Complete native dependency source archives and build recipes accompany binary releases.
@@ -120,6 +120,7 @@ After every release, review the repository description, README, installation gui
 - Audit intended tracked/staged source with `python scripts/check_release.py`; inspect the actual archives as well. Never use personal library data in documentation, screenshots or tests committed to Git.
 - Confirm privacy/network behavior, supported models and their separate index identities. Preserve upstream license notices and matching native source archives.
 - Run the relevant service, native and extension checks and a fresh package installation. Record remaining limitations; do not describe planned features as shipped.
+- Before a release or Store PR update, have an independent reviewer inspect the exact candidate changes since the last submitted version. Reproduce actionable findings, add regression coverage, and request another review after fixing them. Review pending requests/polling, in-flight indexing, offline and retained sources, and combinations of content switches. Record the reviewed commit and unresolved limitations; passing tests alone do not complete this step.
 - Before public distribution, complete an independent privacy/license review of source, history and release assets, plus Store requirements and installer signing checks.
 
 CI runs documentation checks on changes and again when a GitHub release is published. Automated checks supplement this review; they do not judge every prose claim.

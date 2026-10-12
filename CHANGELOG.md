@@ -2,6 +2,15 @@
 
 The complete published version history is kept here. Earlier installation archives are retired from this repository; use the latest release. Dates are in UTC.
 
+## [0.6.4] - Unreleased
+
+- Preserve folder additions made while a full settings request is pending, and keep a newer folder removal's explicit index-deletion choice.
+- Explain and defer removal of a submitted source until model setup accepts it; do not show a removal that completion polling would undo.
+- Keep saved indexes and skip records for removed explicit sources inside hidden or normally skipped folders. Hide those entries unless a selected source can actually scan them; clean them only when requested.
+- Allow settings changes with saved offline sources. Refresh thumbnails only for selected entries and repair returned sources without re-embedding their vectors.
+- Honor image-content toggles while video remains enabled, preserving the compatible saved indexes for later reuse.
+- Require independent code review and regression verification before releases or Store PR updates.
+
 ## [0.6.3] - 2026-10-12
 
 - Add search folders cumulatively and show the full selected list with indexed file counts. Native picker selections no longer replace existing sources.

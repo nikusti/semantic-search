@@ -1,5 +1,11 @@
 # Semantic Search Changelog
 
+## Review Folder and Settings Edge Cases - {PR_MERGE_DATE}
+
+- Preserve newer folder additions and deletion choices while settings requests finish.
+- Explain pending source setup before removal and preserve retained/offline sources.
+- Respect image-content selection while video is enabled.
+
 ## Additive Search Folders - {PR_MERGE_DATE}
 
 - Add folders without replacing earlier sources and show the selected list.

@@ -24,6 +24,8 @@ class Engine(FakeEngine):
         self.documents.append(text)
         return super().document(text)
 
+    def image(self, path): return self.document('image:'+str(path))
+
     def pin(self): return nullcontext()
     def close(self): pass
 
@@ -148,6 +150,33 @@ def test_nested_sources_scan_once_and_prune_by_path_not_old_owner(tmp_path):
         assert client.get('/v1/status').json()['files'] == 1
 
 
+@pytest.mark.parametrize('name',['.hidden','node_modules'])
+@pytest.mark.parametrize('delete_saved',[False,True])
+def test_removed_explicit_skipped_child_is_hidden_and_only_purged_on_request(tmp_path,name,delete_saved):
+    config,engine = library(tmp_path)
+    parent = config.roots[0]
+    child = parent/name; child.mkdir(); file = child/'entry.txt'; file.write_text('Explicit nested source')
+    empty = child/'empty.txt'; empty.write_text('')
+    with TestClient(create_app(config,engine)) as client:
+        client.post('/v1/folders/add',json={'paths':[str(child)]})
+        assert client.post('/v1/index').json()['added'] == 1
+        result = client.post('/v1/folders/remove',json={'path':str(child),'delete_saved_index':delete_saved}).json()
+        assert result['deleted_entries'] == int(delete_saved) and result['cleanup_pending'] == 0
+        assert client.get('/v1/status').json()['files'] == 1
+        assert client.get('/v1/status').json()['retained_files'] == int(not delete_saved)
+        assert client.post('/v1/index').json()['deleted'] == 0
+        with sqlite3.connect(config.database) as db:
+            assert db.execute('SELECT count(*) FROM files WHERE path=?',(str(file),)).fetchone()[0] == int(not delete_saved)
+            assert db.execute('SELECT count(*) FROM index_failures WHERE path=?',(str(empty),)).fetchone()[0] == int(not delete_saved)
+        assert not any(r['path']==str(file) for r in client.post('/v1/search',json={'query':'source'}).json()['results'])
+        assert file.exists()
+        if not delete_saved:
+            client.post('/v1/folders/add',json={'paths':[str(child)]})
+            assert client.get('/v1/status').json()['files'] == 2
+            restored = client.post('/v1/index').json()
+            assert restored['unchanged'] == 2 and restored['indexed'] == 0 and restored['cached_skips'] == 1
+
+
 def test_removed_inflight_root_cannot_reinsert_but_other_sources_continue(tmp_path):
     config,unused = library(tmp_path,('a','b'))
     a,b = config.roots
@@ -231,3 +260,72 @@ def test_legacy_roots_only_apply_preserves_database_and_rejects_invalid_addition
         assert client.post('/v1/folders/add',json={'paths':[str(config.roots[0]/'entry.txt')]}).status_code == 422
         assert config.source_path.read_bytes() == before
         assert engine.documents == []
+
+
+def image_library(tmp_path,monkeypatch):
+    import tinysearch.settings as settings
+    from PIL import Image
+    a,b = tmp_path/'a',tmp_path/'b'; a.mkdir(); b.mkdir()
+    (a/'entry.txt').write_text('Selected document')
+    Image.new('RGB',(640,480),'orange').save(b/'photo.png')
+    model=tmp_path/'models/test'; model.mkdir(parents=True)
+    for name in ('config.json','tokenizer.json','model.safetensors'): (model/name).write_text('fake')
+    monkeypatch.setattr(settings,'CATALOG',[{'id':'mlx-8bit','backend':'mlx','path':'models/test',
+                          'revision':'test','repo':'test/pinned','label':'MLX'}])
+    monkeypatch.setattr(settings,'ManagedEngine',Engine)
+    monkeypatch.setattr(settings,'ensure_downloaded',lambda *args:None)
+    config=Config((a,b),model,'test',tmp_path/'data/index.sqlite3',dimensions=128,
+                  backend='mlx',model_variant='mlx-8bit',enable_video=True,
+                  source_path=tmp_path/'config.toml',storage_path=tmp_path)
+    config=settings.configured(config,dict(model_variant='mlx-8bit',dimensions=128,chunk_tokens=384,
+        thumbnail_px=256,idle_seconds=60,enable_documents=True,enable_images=True,enable_video=True))
+    config.save(); engine=Engine(config)
+    store=Store(config,engine); assert store.index()['added']==2; store.close()
+    return config,engine,a,b
+
+
+def completed(client):
+    deadline=time.monotonic()+5
+    while time.monotonic()<deadline:
+        job=client.get('/v1/settings').json()['job']
+        if job['state'] in {'complete','error'}:
+            assert job['state']=='complete',job
+            return
+        time.sleep(.02)
+    pytest.fail('Settings did not finish')
+
+
+@pytest.mark.parametrize('remove_source',[True,False])
+def test_offline_image_does_not_block_thumbnail_settings_and_repairs_on_return(tmp_path,monkeypatch,remove_source):
+    config,engine,a,b=image_library(tmp_path,monkeypatch)
+    with sqlite3.connect(config.database) as db: original=db.execute('SELECT vector FROM chunks WHERE path=?',(str(b/'photo.png'),)).fetchone()[0]
+    with TestClient(create_app(config,engine)) as client:
+        if remove_source: client.post('/v1/folders/remove',json={'path':str(b)})
+        b.rename(tmp_path/'offline')
+        values=client.get('/v1/settings').json()['current']
+        assert client.post('/v1/settings',json={**values,'thumbnail_px':384}).status_code==200
+        completed(client)
+        saved=Config.load(config.source_path)
+        assert saved.thumbnail_px==384 and saved.database==config.database
+        assert client.get('/v1/status').json()['retained_files']==int(remove_source)
+        (tmp_path/'offline').rename(b)
+        if remove_source: client.post('/v1/folders/add',json={'paths':[str(b)]})
+        with sqlite3.connect(config.database) as db: assert db.execute('SELECT pixels FROM thumbnail_specs WHERE path=?',(str(b/'photo.png'),)).fetchone()[0]==256
+        assert client.post('/v1/index').json()['unchanged']==2
+        with sqlite3.connect(config.database) as db:
+            assert db.execute('SELECT pixels FROM thumbnail_specs WHERE path=?',(str(b/'photo.png'),)).fetchone()[0]==384
+            assert db.execute('SELECT vector FROM chunks WHERE path=?',(str(b/'photo.png'),)).fetchone()[0]==original
+
+
+def test_disabling_images_with_video_enabled_changes_content_without_losing_saved_vectors(tmp_path,monkeypatch):
+    config,engine,a,b=image_library(tmp_path,monkeypatch)
+    with TestClient(create_app(config,engine)) as client:
+        values=client.get('/v1/settings').json()['current']
+        client.post('/v1/settings',json={**values,'enable_images':False}); completed(client)
+        assert not client.get('/v1/settings').json()['current']['enable_images']
+        assert client.get('/v1/status').json()['files']==1
+        assert {r['kind'] for r in client.post('/v1/search',json={'query':'photo'}).json()['results']}=={'document'}
+        client.post('/v1/settings',json=values); completed(client)
+        assert client.get('/v1/status').json()['files']==2
+        assert {r['kind'] for r in client.post('/v1/search',json={'query':'photo'}).json()['results']}=={'document','image'}
+        assert client.post('/v1/index').json()['unchanged']==2

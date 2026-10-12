@@ -2,11 +2,26 @@
 from pathlib import Path
 import hashlib
 import os
+from .extract import EXCLUDED
 
 
 def covers(path, roots):
     path = Path(path)
     return path.is_absolute() and any(path.is_relative_to(root) for root in roots)
+
+
+def walk_includes(path, root):
+    """Match the scanner's scope, relative to an explicitly chosen source."""
+    try:
+        parts = Path(path).relative_to(root).parts
+    except ValueError:
+        return False
+    return bool(parts) and not parts[-1].startswith('.') and not any(
+        part.startswith('.') or part in EXCLUDED for part in parts[:-1])
+
+
+def scans_folder(folder, roots):
+    return any(walk_includes(Path(folder)/'_source_marker', root) for root in roots)
 
 
 def selected_roots(values, previous=()):
@@ -37,7 +52,7 @@ def purge_folders(db, removed, remaining, database, verify_identity=True):
     if not identity or (verify_identity and not identity[0].startswith('embeddinggemma-2:')):
         return 0
     def forget(path):
-        return covers(path, removed) and not covers(path, remaining)
+        return covers(path, removed) and not any(walk_includes(path, root) for root in remaining)
     paths = [(r[0],) for r in db.execute('SELECT path FROM files') if forget(r[0])]
     segments = []
     columns = {r[1] for r in db.execute('PRAGMA table_info(chunks)')}

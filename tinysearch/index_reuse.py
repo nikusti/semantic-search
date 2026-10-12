@@ -5,7 +5,7 @@ import re
 import sqlite3
 from .engine import engine_identity
 from . import photos
-from .folders import covers
+from .folders import walk_includes
 
 def text_identity(identity):
     return identity.split(':media-v1:')[0].replace(':text-only', '')
@@ -35,7 +35,7 @@ def reuse_saved(config, target):
                     if not old.execute("SELECT 1 FROM sqlite_master WHERE name='photos_assets'").fetchone(): continue
                     photo = old.execute('SELECT * FROM photos_assets WHERE path=?', (filename,)).fetchone()
                     if not photo: continue
-                elif config.is_excluded(filename) or not covers(filename, config.roots): continue
+                elif config.is_excluded(filename) or not any(walk_includes(filename, root) for root in config.roots): continue
                 if not {'document':config.enable_documents, 'image':config.enable_images, 'video':config.enable_video or config.enable_audio, 'audio':config.enable_audio}.get(kind): continue
                 if target.execute('SELECT 1 FROM files WHERE path=?', (filename,)).fetchone(): continue
                 if kind in {'video', 'audio'}:

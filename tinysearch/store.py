@@ -15,7 +15,7 @@ from .preview import render_pdf, photo_transition
 from . import media
 from . import photos
 from .index_failures import FailureCache, UnsupportedContent, policy, summarize_skip
-from .folders import covers
+from .folders import covers, walk_includes
 
 PHOTOS_AUDIO_PENDING = 'audio-pending:'
 
@@ -130,10 +130,12 @@ class Store:
         self.db.execute("INSERT OR IGNORE INTO meta VALUES ('engine', ?)", (engine.identity,))
         # Unselected sources remain saved until explicitly deleted, but never
         # participate in search/counts. No vector-space migration is needed.
+        self.db.create_function('walk_includes', 2, walk_includes, deterministic=True)
         self.db.executescript('''CREATE TEMP TABLE active_roots (path TEXT PRIMARY KEY, prefix TEXT NOT NULL);
             CREATE TEMP VIEW searchable_files AS SELECT f.* FROM files f
             WHERE f.root='apple-photos' OR EXISTS
-              (SELECT 1 FROM active_roots r WHERE instr(f.path,r.prefix)=1);''')
+              (SELECT 1 FROM active_roots r WHERE instr(f.path,r.prefix)=1
+               AND (f.root=r.path OR walk_includes(f.path,r.path)));''')
         self._select_roots(config.roots)
         self.db.commit()
         self.excluded_removed = self.prune_excluded()
@@ -177,7 +179,7 @@ class Store:
 
     def _check_included(self, path):
         self._check_cancelled()
-        if self.config.is_excluded(path) or (not str(path).startswith(photos.PREFIX) and not covers(path, self.config.roots)):
+        if self.config.is_excluded(path) or (not str(path).startswith(photos.PREFIX) and not any(walk_includes(path, root) for root in self.config.roots)):
             raise IndexPathExcluded()
 
     def cancel_index(self):
@@ -246,7 +248,7 @@ class Store:
         path = Path(filename)
         with self.preview_lock:
             resolved = path.resolve()
-            if resolved != path or not any(resolved.is_relative_to(root) for root in self.config.roots):
+            if resolved != path or not any(walk_includes(resolved, root) for root in self.config.roots):
                 raise ValueError("Segment path is outside indexed roots")
             with self.lock:
                 row = self.db.execute("""SELECT f.kind,f.mtime,f.size,m.has_audio FROM files f JOIN chunks c ON c.path=f.path
@@ -451,7 +453,10 @@ class Store:
                                     self.db.execute('UPDATE files SET root=? WHERE path=?', (str(root), str(path)))
                             if old["kind"] == "image":
                                 with self.lock:
-                                    has_thumbnail = self.db.execute("SELECT 1 FROM thumbnails WHERE path=?", (str(path),)).fetchone()
+                                    has_thumbnail = self.db.execute('''SELECT 1 FROM thumbnails t
+                                        JOIN thumbnail_specs s ON s.path=t.path
+                                        WHERE t.path=? AND s.pixels>=? AND s.quality>=?''',
+                                        (str(path),self.config.thumbnail_px,self.config.thumbnail_quality)).fetchone()
                                 if not has_thumbnail:
                                     jpeg = thumbnail(path, self.config.thumbnail_px, self.config.thumbnail_quality)
                                     with self.lock, self.db:
@@ -572,7 +577,7 @@ class Store:
                         old_paths = self.db.execute('SELECT path FROM files WHERE instr(path,?)=1',
                                                     (str(root).rstrip('/')+'/',)).fetchall()
                         removed = [(r[0],) for r in old_paths if
-                                   (r[0] not in seen and not covers(r[0],delegated)) or self.config.is_excluded(r[0])]
+                                   (r[0] not in seen and walk_includes(r[0],root) and not covers(r[0],delegated)) or self.config.is_excluded(r[0])]
                         self.db.executemany("DELETE FROM files WHERE path=?", removed)
                         summary["deleted"] += len(removed)
                         self.failures.prune(root, seen, delegated)
@@ -883,7 +888,7 @@ class Store:
                                   "matched_modality": row["modality"], "duration_seconds": row["duration_seconds"]}
         results = [r for r in sorted(best.values(), key=lambda r: -r["score"])
                    if (r['source'] == 'photos' and self._photo_enabled(r['kind']))
-                   or (r['source'] == 'file' and covers(r['path'], self.config.roots) and not self.config.is_excluded(r['path']) and Path(r['path']).is_file())][:limit]
+                   or (r['source'] == 'file' and any(walk_includes(r['path'], root) for root in self.config.roots) and not self.config.is_excluded(r['path']) and Path(r['path']).is_file())][:limit]
         # Decode thumbnails only for returned results, not the whole image library.
         with self.lock:
             for result in results:
@@ -902,7 +907,7 @@ class Store:
             if not indexed or (path.suffix.lower() != ".pdf" and kind(path) not in {"image", "video"}):
                 raise ValueError("Preview requires an indexed PDF, image or video")
             resolved = path.resolve()
-            if resolved != path or not any(resolved.is_relative_to(root) for root in self.config.roots):
+            if resolved != path or not any(walk_includes(resolved, root) for root in self.config.roots):
                 raise ValueError("Preview path is outside indexed roots")
             stat = path.stat()
             if kind(path) == "video":

@@ -4,7 +4,7 @@ from hashlib import sha256
 from importlib.metadata import PackageNotFoundError, version
 import json
 import time
-from .folders import covers
+from .folders import covers, walk_includes
 
 
 class UnsupportedContent(ValueError):
@@ -73,7 +73,7 @@ class FailureCache:
     def prune(self, root, seen, protected=()):
         with self.lock, self.db:
             paths = [(r[0],) for r in self.db.execute('SELECT DISTINCT path,root FROM index_failures')
-                     if (r[1] == str(root) or covers(r[0], (root,))) and
+                     if (r[1] == str(root) or walk_includes(r[0], root)) and
                      r[0] not in seen and not covers(r[0], protected)]
             self.db.executemany('DELETE FROM index_failures WHERE path=?', paths)
 

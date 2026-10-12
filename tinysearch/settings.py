@@ -2,7 +2,6 @@
 from dataclasses import replace
 from contextlib import nullcontext
 import json
-import os
 from pathlib import Path
 import threading
 import time
@@ -10,7 +9,7 @@ from .worker import ManagedEngine
 from .store import Store, purge_excluded
 from .model_source import resolve_source, installed, ensure_downloaded
 from .storage import APP_SUPPORT
-from .folders import selected_roots, covers, purge_folders
+from .folders import selected_roots, scans_folder, purge_folders
 
 ROOT = Path(__file__).resolve().parents[1]
 CATALOG = json.loads((Path(__file__).parent/'model_catalog.json').read_text())
@@ -37,18 +36,7 @@ def configured(config, values):
             values.pop(key, None)
     roots = values.pop('roots', None)
     if roots is not None:
-        selected = []
-        for value in roots:
-            path = Path(str(value).strip()).expanduser()
-            if not path.is_absolute():
-                raise ValueError('Choose an absolute folder path or ~/folder')
-            path = path.resolve()
-            if not path.is_dir():
-                raise ValueError('Each selected folder must exist and be readable')
-            if not os.access(path, os.R_OK | os.X_OK):
-                raise ValueError('Allow access to the selected folder in macOS Privacy settings')
-            selected.append(path)
-        config = replace(config, roots=tuple(sorted(set(selected))))
+        config = replace(config, roots=selected_roots(roots,config.roots))
     exclusions = values.pop('excluded_paths', None)
     if exclusions is None:
         exclusions = config.excluded_paths
@@ -150,7 +138,7 @@ class Settings:
             pending_file = self.storage/'folder-cleanup.json'
             if pending_file.is_file():
                 self._save_folder_cleanup([item for item in json.loads(pending_file.read_text())
-                                           if not covers(item['root'],config.roots)])
+                                           if not scans_folder(item['root'],config.roots)])
             from .index_reuse import reuse_saved
             with store.lock: reused = reuse_saved(config, store.db)
             # Keep an in-flight scan's state. Added roots are scanned on the next update.
@@ -199,7 +187,7 @@ class Settings:
         deleted, remaining = 0, []
         for item in pending:
             root = Path(item['root'])
-            if covers(root, store.config.roots): continue  # Re-added: cancel the old deletion request.
+            if scans_folder(root, store.config.roots): continue  # Re-added: cancel the old deletion request.
             protected = tuple(set(store.config.roots)|{Path(p) for p in item['protected']})
             failed = False
             # Include the active index even when a CLI stores it outside data/.
@@ -263,7 +251,9 @@ class Settings:
         if not any(values.get(key,False) for key in ('enable_documents','enable_images','enable_video','enable_audio')): raise ValueError('Select at least one content type')
         config=configured(self.app.state.store.config,values)
         from .engine import engine_identity
-        if engine_identity(config) == engine_identity(current) and config.enable_documents == current.enable_documents:
+        if (engine_identity(config) == engine_identity(current)
+                and config.enable_documents == current.enable_documents
+                and config.enable_images == current.enable_images):
             config = replace(config,database=current.database)
         if not config.roots and not config.enable_photos_library:
             raise ValueError('Choose at least one folder to index')
@@ -426,7 +416,7 @@ class Settings:
             prior=int(row[0]) if row else 256
             if prior != config.thumbnail_px:
                 from .extract import thumbnail
-                for row in candidate_store.db.execute("SELECT path FROM files WHERE kind='image'").fetchall():
+                for row in candidate_store.db.execute("SELECT path FROM searchable_files WHERE kind='image'").fetchall():
                     if row[0].startswith('photos://asset/'):
                         from io import BytesIO
                         from PIL import Image
@@ -438,8 +428,15 @@ class Settings:
                         output = BytesIO(); image.save(output, format='JPEG', quality=config.thumbnail_quality)
                         jpeg = output.getvalue()
                     else:
-                        jpeg=thumbnail(Path(row[0]),config.thumbnail_px,config.thumbnail_quality)
-                    candidate_store.db.execute('INSERT OR REPLACE INTO thumbnails VALUES (?,?)',(row[0],jpeg))
+                        try:
+                            jpeg=thumbnail(Path(row[0]),config.thumbnail_px,config.thumbnail_quality)
+                        except OSError:
+                            continue  # Missing/unreadable originals are checked by the next indexing pass.
+                    if row[0].startswith('photos://asset/'):
+                        candidate_store.db.execute('INSERT OR REPLACE INTO thumbnails VALUES (?,?)',(row[0],jpeg))
+                        candidate_store.db.execute('DELETE FROM thumbnail_specs WHERE path=?',(row[0],))
+                    else:
+                        candidate_store._save_thumbnail(row[0],jpeg)
                 candidate_store.db.commit()
             candidate_store.db.execute("INSERT OR REPLACE INTO meta VALUES ('thumbnail_px',?)",(str(config.thumbnail_px),))
             candidate_store.db.commit()
