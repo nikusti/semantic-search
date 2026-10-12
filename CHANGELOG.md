@@ -2,7 +2,7 @@
 
 The complete published version history is kept here. Earlier installation archives are retired from this repository; use the latest release. Dates are in UTC.
 
-## Unreleased
+## [0.6.1] - 2026-10-12
 
 - Stop obsolete Photos metadata retries after switching results, closing Search or opening Manage Library. Preserve retries for the active photo and explicit clipboard copying.
 
