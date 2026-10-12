@@ -4,6 +4,7 @@ import base64
 import os
 from pathlib import Path
 import sqlite3
+import subprocess
 import threading
 import time
 import numpy as np
@@ -12,6 +13,8 @@ from .extract import EXCLUDED, extract, kind, thumbnail
 from .preview import render_pdf, photo_transition
 from . import media
 from . import photos
+
+PHOTOS_AUDIO_PENDING = 'audio-pending:'
 
 class IndexPathExcluded(Exception):
     """An in-flight file was excluded; discard it without reporting failure."""
@@ -94,6 +97,9 @@ class Store:
           CREATE TABLE IF NOT EXISTS photos_assets (
             path TEXT PRIMARY KEY REFERENCES files(path) ON DELETE CASCADE,
             asset_id TEXT NOT NULL, name TEXT NOT NULL, fingerprint TEXT NOT NULL);
+          CREATE TABLE IF NOT EXISTS photos_metadata (
+            path TEXT PRIMARY KEY REFERENCES files(path) ON DELETE CASCADE,
+            created_at REAL);
         """)
         columns = {row[1] for row in self.db.execute("PRAGMA table_info(chunks)")}
         for name, sql_type in (("start_seconds", "REAL"), ("end_seconds", "REAL"), ("modality", "TEXT")):
@@ -164,19 +170,23 @@ class Store:
                         "allow_network": self.config.photos_allow_network,
                         "indexed": self.db.execute('SELECT count(*) FROM photos_assets').fetchone()[0],
                         "by_kind": [dict(row) for row in self.db.execute('''SELECT f.kind, count(DISTINCT f.path) AS files,
-                            count(c.id) AS vectors, coalesce(sum(length(c.vector)),0) AS vector_bytes
-                            FROM photos_assets p JOIN files f ON f.path=p.path LEFT JOIN chunks c ON c.path=f.path GROUP BY f.kind''')]},
+                            count(c.id) AS vectors, count(c.id) * ? AS vector_bytes
+                            FROM photos_assets p JOIN files f ON f.path=p.path LEFT JOIN chunks c ON c.path=f.path GROUP BY f.kind''',
+                            (self.engine.dimensions * 4,))]},
                     "runtime": self.engine.metrics() if hasattr(self.engine, "metrics") else {},
                     "indexing": self.index_lock.locked(),
                     "progress": dict(self.progress) if self.progress else None}
 
     def storage_by_kind(self):
         with self.lock:
+            # Each saved vector has the index's fixed dimensions in float32.
+            # Count via chunks_path instead of fetching every vector BLOB just
+            # to report its size when a launcher opens or polls settings.
             return [dict(row) for row in self.db.execute("""
               SELECT f.kind, count(DISTINCT f.path) AS files, count(c.id) AS vectors,
-                     coalesce(sum(length(c.vector)),0) AS vector_bytes
+                     count(c.id) * ? AS vector_bytes
               FROM files f LEFT JOIN chunks c ON c.path=f.path GROUP BY f.kind
-            """)]
+            """, (self.engine.dimensions * 4,))]
 
     def segment(self, filename, start, end):
         """Open a bounded indexed match, never copy the entire original recording."""
@@ -188,7 +198,8 @@ class Store:
             if resolved != path or not any(resolved.is_relative_to(root) for root in self.config.roots):
                 raise ValueError("Segment path is outside indexed roots")
             with self.lock:
-                row = self.db.execute("""SELECT f.kind,f.mtime,f.size FROM files f JOIN chunks c ON c.path=f.path
+                row = self.db.execute("""SELECT f.kind,f.mtime,f.size,m.has_audio FROM files f JOIN chunks c ON c.path=f.path
+                    LEFT JOIN media_files m ON m.path=f.path
                     WHERE f.path=? AND c.start_seconds=? AND c.end_seconds=? LIMIT 1""", (str(path),start,end)).fetchone()
             if not row or row["kind"] not in {"video", "audio"} or not 0 < end-start <= 30:
                 raise ValueError("Requires an indexed media segment of at most 30 seconds")
@@ -219,13 +230,15 @@ class Store:
                 if old != output:
                     total -= old.stat().st_size
                     old.unlink()
-            return {"path":str(output),"start_seconds":start,"end_seconds":end}
+            return {"path":str(output),"start_seconds":start,"end_seconds":end,
+                    "audio_unavailable": bool(row['kind'] == 'video' and row['has_audio'] and not media.probe(output, self.config).has_audio)}
 
     def _photos_segment(self, path, start, end):
         with self.preview_lock:
             with self.lock:
-                row = self.db.execute('''SELECT f.kind,f.mtime,f.size,p.asset_id FROM files f
+                row = self.db.execute('''SELECT f.kind,f.mtime,f.size,p.asset_id,m.has_audio FROM files f
                     JOIN photos_assets p ON p.path=f.path JOIN chunks c ON c.path=f.path
+                    LEFT JOIN media_files m ON m.path=f.path
                     WHERE f.path=? AND c.start_seconds=? AND c.end_seconds=? LIMIT 1''', (path, start, end)).fetchone()
             if not row or row['kind'] != 'video' or not self._photo_enabled('video') or not 0 < end-start <= 30:
                 raise ValueError('Requires an indexed Photos video segment of at most 30 seconds')
@@ -257,7 +270,8 @@ class Store:
                 if total <= 64*1024**2: break
                 if old != output and old.suffix in {'.mp4', '.wav'}:
                     total -= old.stat().st_size; old.unlink()
-            return {'path': str(output), 'start_seconds': start, 'end_seconds': end}
+            return {'path': str(output), 'start_seconds': start, 'end_seconds': end,
+                    'audio_unavailable': bool(row['has_audio'] and not media.probe(output, self.config).has_audio)}
 
     def _scan(self, root):
         errors, paths = [], []
@@ -284,7 +298,8 @@ class Store:
         return {"document": self.config.enable_documents, "image": self.config.enable_images,
                 "video": self.config.enable_video or self.config.enable_audio, "audio": self.config.enable_audio}.get(file_kind, False)
 
-    def _media_chunks(self, path, info, file_kind=None, identity_path=None, orient=False):
+    def _media_chunks(self, path, info, file_kind=None, identity_path=None, orient=False,
+                      saved_chunks=(), poster=None, audio_errors=None):
         file_kind = file_kind or kind(path)
         identity_path = identity_path or path
         if info.duration > self.config.max_media_seconds:
@@ -300,16 +315,29 @@ class Store:
             windows.extend((start, end, "audio") for start, end in media.segments(info.audio_duration or info.duration, self.config.audio_segment_seconds, self.config.audio_overlap_seconds))
         if not windows: raise ValueError('No enabled media stream in this file')
         self.progress["current_chunks_total"] = len(windows)
-        chunks, poster = [], None
+        chunks = []
+        saved = {(r['start_seconds'], r['end_seconds'], r['modality']): tuple(r) for r in saved_chunks}
         for start, end, modality in windows:
             self._check_included(identity_path)
+            if (start, end, modality) in saved:
+                chunks.append(saved[(start, end, modality)])
+                self.progress['current_chunks_done'] += 1
+                continue
             if modality == "video":
                 frames = media.video_frames(path, start, end, self.config, orient)
                 vector = self.engine.video(frames)
                 if poster is None:
                     poster = media.jpeg(frames[len(frames)//2], self.config.thumbnail_px, self.config.thumbnail_quality)
             else:
-                samples = media.audio_samples(path, start, end, self.config)
+                try:
+                    samples = media.audio_samples(path, start, end, self.config)
+                except (subprocess.CalledProcessError, subprocess.TimeoutExpired, ValueError):
+                    self._check_included(identity_path)
+                    if audio_errors is None or file_kind != 'video' or not self.config.enable_video:
+                        raise
+                    audio_errors.append((start, end))
+                    self.progress['current_chunks_done'] += 1
+                    continue
                 vector = self.engine.audio(samples)
             self._check_included(identity_path)
             snippet = f"{'Video scene' if modality == 'video' else 'Audio'} · {media.timestamp(start)}–{media.timestamp(end)}"
@@ -492,8 +520,9 @@ class Store:
                             cached = self.db.execute('SELECT jpeg FROM thumbnails WHERE path=?', (path,)).fetchone()
                             saved = self.db.execute('SELECT snippet,vector,start_seconds,end_seconds,modality FROM chunks WHERE path=? ORDER BY position', (path,)).fetchall()
                             saved_info = self.db.execute('SELECT * FROM media_files WHERE path=?', (path,)).fetchone()
-                        reusable = bool(old and old[0] == fingerprint and saved and (file_kind != 'video' or saved_info))
-                        if reusable and cached:
+                        reusable = bool(old and old[0].removeprefix(PHOTOS_AUDIO_PENDING) == fingerprint and saved and (file_kind != 'video' or saved_info))
+                        retry_audio = bool(reusable and self.config.enable_audio and old[0].startswith(PHOTOS_AUDIO_PENDING))
+                        if reusable and cached and not retry_audio:
                             from io import BytesIO
                             from PIL import Image
                             with Image.open(BytesIO(cached[0])) as small:
@@ -505,7 +534,8 @@ class Store:
                         if shutil.disk_usage(self.config.database.parent).free < 512 * 1024**2:
                             raise PhotosImportPaused('Less than 512 MB free. Free disk space before importing more Photos assets')
                         info = None
-                        if file_kind == 'video' and not reusable:
+                        audio_errors = []
+                        if file_kind == 'video' and (not reusable or retry_audio):
                             import math
                             duration = asset.get('duration', 0)
                             if not math.isfinite(duration) or duration <= 0 or duration > self.config.max_media_seconds:
@@ -519,7 +549,9 @@ class Store:
                                 if source.stat().st_size > self.config.max_media_file_mb * 1024**2:
                                     raise ValueError('Video exceeds the configured file size limit')
                                 info = media.probe(source, self.config)
-                                chunks, jpeg = self._media_chunks(source, info, file_kind='video', identity_path=path, orient=True)
+                                chunks, jpeg = self._media_chunks(source, info, file_kind='video', identity_path=path, orient=True,
+                                    saved_chunks=saved if reusable else (), poster=cached[0] if reusable and cached else None,
+                                    audio_errors=audio_errors)
                                 # Audio-only indexing still needs a visible video poster.
                                 if jpeg is None:
                                     jpeg = media.jpeg(media.frame(source, 0, self.config, orient=True), self.config.thumbnail_px, self.config.thumbnail_quality)
@@ -541,17 +573,21 @@ class Store:
                             summary[key] = summary.get(key, 0) + 1
                             continue
                         self._check_cancelled()
+                        stored_fingerprint = PHOTOS_AUDIO_PENDING + fingerprint if audio_errors else fingerprint
                         with self.lock, self.db:
                             self.db.execute('DELETE FROM files WHERE path=?', (path,))
                             self.db.execute('INSERT INTO files VALUES (?,?,?,?,?,?)',
-                                            (path, photos.ROOT, file_kind, int(asset['modified']*1e9), source.stat().st_size, fingerprint))
+                                            (path, photos.ROOT, file_kind, int(asset['modified']*1e9), source.stat().st_size, stored_fingerprint))
                             self.db.executemany('INSERT INTO chunks(path,position,snippet,vector,start_seconds,end_seconds,modality) VALUES (?,?,?,?,?,?,?)',
                                                 [(path, i, *chunk) for i, chunk in enumerate(chunks)])
                             self.db.execute('INSERT INTO thumbnails VALUES (?,?)', (path, jpeg))
-                            self.db.execute('INSERT INTO photos_assets VALUES (?,?,?,?)', (path, asset['id'], name or asset['name'], fingerprint))
+                            self.db.execute('INSERT INTO photos_assets VALUES (?,?,?,?)', (path, asset['id'], name or asset['name'], stored_fingerprint))
                             if info:
                                 self.db.execute('INSERT INTO media_files VALUES (?,?,?)', (path, info.duration, int(info.has_audio)))
-                        if reusable:
+                        if audio_errors:
+                            summary['partial_videos'] = summary.get('partial_videos', 0) + 1
+                            summary['errors'].append(f'Apple Photos: {len(audio_errors)} audio window(s) could not be decoded; video scenes are indexed. Retry Update Search Index to complete audio.')
+                        if reusable and not retry_audio:
                             summary['unchanged'] += 1
                         else:
                             summary['indexed'] += 1
@@ -578,6 +614,36 @@ class Store:
         except Exception as error:
             self._check_cancelled()
             summary['errors'].append(f'Apple Photos: {error}')
+
+    def photos_details(self, path):
+        with self.preview_lock:
+            with self.lock:
+                asset = self.db.execute('SELECT p.asset_id,p.fingerprint,f.kind FROM photos_assets p JOIN files f ON f.path=p.path WHERE p.path=?', (path,)).fetchone()
+                cached = self.db.execute('SELECT created_at FROM photos_metadata WHERE path=?', (path,)).fetchone()
+            if not asset or not self._photo_enabled(asset['kind']):
+                raise ValueError('Photo is not indexed or enabled')
+            if cached: return {'created_at': cached[0]}
+            with photos.PhotoLibrary() as library:
+                result = library.metadata(asset['asset_id'])
+            import math
+            created = result.get('created_at')
+            if isinstance(created, bool) or not isinstance(created, (int, float)) or not math.isfinite(created):
+                created = None
+            with self.lock, self.db:
+                current = self.db.execute('SELECT fingerprint FROM photos_assets WHERE path=?', (path,)).fetchone()
+                if not current or current[0] != asset['fingerprint']:
+                    raise RuntimeError('Photo changed while reading its date; retry shortly')
+                self.db.execute('INSERT OR REPLACE INTO photos_metadata VALUES (?,?)', (path, created))
+            return {'created_at': created}
+
+    def copy_photo(self, path):
+        with self.preview_lock:
+            with self.lock:
+                asset = self.db.execute('SELECT p.asset_id,f.kind FROM photos_assets p JOIN files f ON f.path=p.path WHERE p.path=?', (path,)).fetchone()
+            if not asset or asset['kind'] != 'image' or not self._photo_enabled('image'):
+                raise ValueError('Photo is not indexed or enabled')
+            with photos.PhotoLibrary() as library:
+                return library.copy_photo(asset['asset_id'], network=self.config.photos_allow_network)
 
     def photos_thumbnail(self, path):
         with self.lock:

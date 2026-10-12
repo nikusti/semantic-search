@@ -7,6 +7,7 @@ import subprocess
 import sys
 import time
 
+import av
 import numpy as np
 from PIL import Image
 import pytest
@@ -19,6 +20,24 @@ from tinysearch.server import create_app
 from tinysearch.settings import configured
 from tinysearch import media
 from tinysearch.preview import render_pdf
+
+
+@pytest.mark.skipif(sys.platform != 'darwin', reason='VideoToolbox is supplied by macOS')
+@pytest.mark.parametrize('error', [ValueError('Invalid audio'), av.error.InvalidDataError(1094995529, 'Invalid audio')])
+def test_video_segment_keeps_visual_frames_when_soundtrack_cannot_decode(tmp_path, monkeypatch, error):
+    from tinysearch import media_decoder
+    source = tmp_path/'input.mp4'; make_clip(source)
+    original = source.read_bytes()
+    def fail(*a): raise error
+    monkeypatch.setattr(media_decoder, 'audio', fail)
+    output = tmp_path/'visual.mp4'
+    media_decoder.segment(source, output, 1, 3, True)
+    info = media_decoder.probe(output)
+    assert info['has_video'] and not info['has_audio']
+    assert 1.5 < info['duration'] <= 2.1
+    assert source.read_bytes() == original
+    with pytest.raises(type(error)):
+        media_decoder.segment(source, tmp_path/'audio.wav', 1, 3, False)
 
 
 def test_first_launch_has_no_selected_files_and_preserves_existing_configuration(tmp_path):

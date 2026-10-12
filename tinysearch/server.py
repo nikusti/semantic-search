@@ -43,6 +43,9 @@ class SegmentRequest(BaseModel):
     start_seconds: float = Field(ge=0,le=86400,allow_inf_nan=False)
     end_seconds: float = Field(gt=0,le=86400,allow_inf_nan=False)
 
+class PhotoRequest(BaseModel):
+    path: str = Field(min_length=1, max_length=4096)
+
 class ModelSourceRequest(BaseModel):
     model_variant: Literal['mlx-8bit','custom','coreml-experimental']
     model_url: str = Field(default='', max_length=2048)
@@ -182,6 +185,27 @@ def create_app(config, engine=None, request_stop=None):
                 return result
         except RuntimeError as error:
             raise HTTPException(503, str(error)) from error
+
+    def photo_action(body, action):
+        with operation_lock:
+            store = app.state.store
+            if not store.preview_lock.acquire(blocking=False):
+                raise HTTPException(409, 'Another Photos operation is being prepared; retry shortly')
+        try:
+            return getattr(store, action)(body.path)
+        except ValueError as error:
+            raise HTTPException(404, str(error)) from error
+        except RuntimeError as error:
+            raise HTTPException(503, str(error)) from error
+        finally: store.preview_lock.release()
+
+    @app.post('/v1/photos/details')
+    def photo_details(body: PhotoRequest):
+        return photo_action(body, 'photos_details')
+
+    @app.post('/v1/photos/copy')
+    def copy_photo(body: PhotoRequest):
+        return photo_action(body, 'copy_photo')
 
     @app.post('/v1/models/inspect')
     def inspect_model(body: ModelSourceRequest):

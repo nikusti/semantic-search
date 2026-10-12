@@ -30,6 +30,10 @@ The original file must still exist and be readable. This release includes its me
 
 The model worker exits after the configured idle timeout, normally one minute. Indexing and active requests delay unloading. The lightweight local parent service remains running. The audio encoder is used only while indexing sound.
 
+## Apple Photos access or iCloud media is unavailable
+
+Apple Photos support is in the unreleased 0.6.0 source. Enable the source, use **Actions → Connect Apple Photos** and grant the helper permission. Enable iCloud downloads to import or copy media missing locally. Unsigned helper updates may require permission again. Already indexed thumbnails can remain visible offline. A video with an unreadable soundtrack keeps its completed visual scenes; the next index update retries missing audio. See [Apple Photos](APPLE_PHOTOS.md).
+
 ## The model was deleted
 
 Download the same model in Model Settings to reuse its saved index. Deleting model weights leaves indexes and original files untouched.
@@ -42,4 +46,4 @@ For source installation, developer CLI commands and packaging instructions, see 
 
 ## macOS blocks the companion installer
 
-The optional 0.5.0 companion installer has no Apple Developer ID signature or notarization. Gatekeeper can reject normal opening of a downloaded copy. Follow [Apple's opening-app guidance](https://support.apple.com/en-us/102445) to explicitly approve a trusted download, or use the ready-to-use bundled extension ZIP. No global security setting needs to be disabled. This companion installer is not required for the bundled ZIP.
+The optional companion installer has no Apple Developer ID signature or notarization. Gatekeeper can reject normal opening of a downloaded copy. Follow [Apple's opening-app guidance](https://support.apple.com/en-us/102445) to explicitly approve a trusted download, or use the ready-to-use bundled extension ZIP. No global security setting needs to be disabled. This companion installer is not required for the bundled ZIP.

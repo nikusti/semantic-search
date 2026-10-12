@@ -2,8 +2,16 @@
 
 The complete published version history is kept here. Earlier installation archives are retired from this repository; use the latest release. Dates are in UTC.
 
-## Unreleased
+## [0.6.0] - Unreleased
 
+- Keep Search and settings in their normal loading views while connecting; show engine installation/retry instructions only after a connection failure.
+- Show the ready search prompt immediately on an empty launch and count fixed-size vectors without reading their payloads when opening/polling library statistics.
+- Replace Photos link copying with a native full-resolution image clipboard action and show the Photos creation date instead of internal identifiers. Cache dates lazily without rebuilding vectors.
+- Open matched video clips without sound when a malformed soundtrack cannot be decoded, and show a clear notice.
+- Preserve searchable Photos video scenes when audio decoding fails, report incomplete soundtracks, and retry only missing audio windows on the next incremental scan.
+- Preserve Photos source status in Search so a Photos-only library is correctly labeled without prompting for folders.
+- Place photo/video file details beneath the preview in its scrollable content, preserving the image size and showing creation dates for Photos assets.
+- Show a neutral settings-loading state, offer retry only after an error, and retry fetching settings without requiring an engine restart.
 - Add an optional Apple Photos source with explicit macOS permission and optional iCloud downloads.
 - Index temporary image representations locally; retain vectors and small thumbnails, with a bounded preview cache.
 - Reuse unchanged Photos entries and remove unavailable entries only after a completed library pass. Preserve folder indexes and completed work on cancellation.
@@ -12,6 +20,7 @@ The complete published version history is kept here. Earlier installation archiv
 - Include Apple Photos videos and optional soundtracks using the shared MLX/Core ML media pipeline. Keep original assets intact, reuse unchanged entries, and show previews/open short clips at the matched timestamp.
 - Honor content switches for the Photos source and report deferred iCloud videos and per-kind vector storage.
 - Preserve phone-video orientation when encoding Photos scenes and preparing matched clips, without changing existing filesystem video vectors.
+- Copy Photos video bytes into a bounded private temporary file so the local decoder can read them under macOS Photos permissions; clean up cancelled and incomplete copies.
 
 ## [0.5.1] - 2026-10-11
 

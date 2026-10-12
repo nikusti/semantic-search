@@ -186,6 +186,56 @@ def test_photos_api_is_explicit_and_uses_mac_permission(config, library):
         assert client.post('/v1/preview', json={'path':asset_path('unknown')}).status_code == 404
 
 
+def test_photo_copy_and_capture_date_use_indexed_assets_without_reencoding(config, library):
+    from fastapi.testclient import TestClient
+    from tinysearch.server import create_app
+    calls = []
+    library.metadata = lambda self, identifier: calls.append(('metadata',identifier)) or {'created_at': 1700000000}
+    library.copy_photo = lambda self, identifier, network=False: calls.append(('copy',identifier,network)) or {'copied':True,'width':4000,'height':3000}
+    config = replace(config, photos_allow_network=True)
+    engine = Engine()
+    with TestClient(create_app(config, engine)) as client:
+        client.post('/v1/index')
+        before = engine.calls
+        body = {'path':asset_path(library.rows[0]['id'])}
+        assert client.post('/v1/photos/details', json=body).json() == {'created_at':1700000000}
+        assert client.post('/v1/photos/details', json=body).json() == {'created_at':1700000000}
+        copied = client.post('/v1/photos/copy', json=body)
+        assert copied.status_code == 200 and copied.json() == {'copied':True,'width':4000,'height':3000}
+        assert calls == [('metadata',library.rows[0]['id']),('copy',library.rows[0]['id'],True)]
+        assert engine.calls == before
+        assert client.post('/v1/photos/copy',json={'path':asset_path('unknown')}).status_code == 404
+        assert client.post('/v1/photos/details',json={'path':'/private/tmp/outside.jpg'}).status_code == 404
+        assert client.post('/v1/photos/copy',json=body,headers={'Origin':'https://example.com'}).status_code == 403
+        library.rows[0] = {**library.rows[0], 'modified':2}
+        client.post('/v1/index')
+        client.post('/v1/photos/details',json=body)
+        assert len([c for c in calls if c[0] == 'metadata']) == 2
+
+
+def test_photo_copy_preserves_network_policy_and_reports_unavailable_asset(config, library):
+    def copy(self, identifier, network=False):
+        assert network is False
+        raise RuntimeError('Photo is in iCloud; allow downloads or open it in Photos.')
+    library.copy_photo = copy
+    from fastapi.testclient import TestClient
+    from tinysearch.server import create_app
+    with TestClient(create_app(config, Engine())) as client:
+        client.post('/v1/index')
+        body = {'path':asset_path(library.rows[0]['id'])}
+        assert client.post('/v1/photos/copy',json=body).status_code == 503
+
+
+def test_disabled_photo_source_cannot_copy_or_get_new_metadata(config, library):
+    store = Store(config, Engine()); store.index()
+    store.config = replace(config, enable_photos_library=False)
+    path = asset_path(library.rows[0]['id'])
+    try:
+        with pytest.raises(ValueError): store.copy_photo(path)
+        with pytest.raises(ValueError): store.photos_details(path)
+    finally: store.close()
+
+
 def test_low_disk_stops_without_pruning_unvisited_photos(config, library, monkeypatch):
     store = Store(config, Engine()); store.index()
     library.rows[0] = {**library.rows[0], 'modified': 2}
@@ -275,6 +325,123 @@ class VideoEngine(Engine):
     def audio(self, samples):
         self.audio_calls += 1
         return self.query('sound')
+
+
+@pytest.mark.parametrize('backend', ['mlx', 'coreml'])
+@pytest.mark.parametrize('failed_starts', [{8.0}, {0.0, 8.0, 16.0}])
+def test_failed_soundtrack_keeps_scenes_and_retries_only_missing_windows(config, videos, monkeypatch, backend, failed_starts):
+    from tinysearch import media
+    from tinysearch.store import PHOTOS_AUDIO_PENDING
+    config = replace(config, backend=backend, enable_images=False, enable_video=True,
+                     enable_audio=True, audio_segment_seconds=10)
+    attempts = []
+    failing = set(failed_starts)
+    def audio(path, start, end, config):
+        attempts.append(start)
+        if start in failing: raise ValueError('Synthetic invalid audio')
+        return np.ones(16000, dtype=np.float32)
+    monkeypatch.setattr(media, 'audio_samples', audio)
+    engine = VideoEngine(); store = Store(config, engine)
+    try:
+        first = store.index()
+        assert first['added'] == 1 and first['partial_videos'] == 1 and len(first['errors']) == 1
+        assert store.search('scene', 'video')['results']
+        assert engine.video_calls == 3 and engine.audio_calls == 3-len(failing)
+        before = [tuple(r) for r in store.db.execute('SELECT vector,start_seconds,end_seconds,modality FROM chunks ORDER BY position')]
+        assert store.db.execute('SELECT fingerprint FROM photos_assets').fetchone()[0].startswith(PHOTOS_AUDIO_PENDING)
+        attempts.clear()
+        assert store.index()['partial_videos'] == 1
+        assert set(attempts) == failing and engine.video_calls == 3 and engine.audio_calls == 3-len(failing)
+        assert before == [tuple(r) for r in store.db.execute('SELECT vector,start_seconds,end_seconds,modality FROM chunks ORDER BY position')]
+        failing.clear(); attempts.clear()
+        fixed = store.index()
+        assert fixed['updated'] == 1 and not fixed['errors'] and not fixed.get('partial_videos')
+        assert set(attempts) == failed_starts and engine.video_calls == 3 and engine.audio_calls == 3
+        assert store.db.execute('SELECT count(*) FROM chunks').fetchone()[0] == 6
+        assert not store.db.execute('SELECT fingerprint FROM photos_assets').fetchone()[0].startswith(PHOTOS_AUDIO_PENDING)
+        attempts.clear()
+        assert store.index()['unchanged'] == 1 and not attempts
+        assert videos.original.read_bytes() == b'original video stays in Photos' and not videos.temporary.exists()
+    finally: store.close()
+
+
+def test_cancelled_soundtrack_retry_preserves_partial_index(config, videos, monkeypatch):
+    from tinysearch import media
+    config = replace(config, backend='mlx', enable_images=False, enable_video=True,
+                     enable_audio=True, audio_segment_seconds=10)
+    monkeypatch.setattr(media, 'audio_samples', lambda *a: (_ for _ in ()).throw(ValueError('Invalid audio')))
+    engine = VideoEngine(); store = Store(config, engine)
+    try:
+        store.index()
+        before = [tuple(r) for r in store.db.execute('SELECT * FROM chunks')]
+        def cancel(*a):
+            store.cancel_index()
+            return np.ones(16000, dtype=np.float32)
+        monkeypatch.setattr(media, 'audio_samples', cancel)
+        assert store.index()['cancelled']
+        assert before == [tuple(r) for r in store.db.execute('SELECT * FROM chunks')]
+        assert engine.video_calls == 3 and videos.original.exists() and not videos.temporary.exists()
+    finally: store.close()
+
+
+def test_silent_segment_notice_is_preserved_when_cached(config, videos, monkeypatch):
+    from tinysearch import media
+    config = replace(config, backend='mlx', enable_images=False, enable_video=True)
+    store = Store(config, VideoEngine()); store.index()
+    path = asset_path(videos.rows[-1]['id'])
+    monkeypatch.setattr(media, 'render_segment', lambda source,output,*a:output.write_bytes(b'visual clip'))
+    monkeypatch.setattr(media, 'probe', lambda *a:media.MediaInfo(10, True, False))
+    try:
+        assert store.segment(path,0,10)['audio_unavailable']
+        assert store.segment(path,0,10)['audio_unavailable']
+        assert len(videos.video_calls) == 2
+    finally: store.close()
+
+
+def test_copied_partial_video_retries_audio_without_reencoding_scenes(config, videos, monkeypatch):
+    from tinysearch import media
+    from tinysearch.engine import engine_identity
+    from tinysearch.index_reuse import reuse_saved
+    config = replace(config, backend='mlx', model_variant='mlx-8bit', enable_images=False,
+                     enable_video=True, enable_audio=True, audio_segment_seconds=10)
+    class Identified(VideoEngine):
+        def __init__(self, config): self.identity = engine_identity(config)
+    monkeypatch.setattr(media, 'audio_samples', lambda *a: (_ for _ in ()).throw(ValueError('Invalid audio')))
+    original = Store(config, Identified(config))
+    target = None
+    try:
+        original.index()
+        other = replace(config, roots=(), database=config.database.with_name('copied.sqlite3'))
+        engine = Identified(other); target = Store(other, engine)
+        assert reuse_saved(other, target.db) == 1
+        monkeypatch.setattr(media, 'audio_samples', lambda *a:np.ones(16000, dtype=np.float32))
+        result = target.index()
+        assert result['updated'] == 1 and not result['errors']
+        assert engine.video_calls == 0 and engine.audio_calls == 3
+        assert target.status()['chunks'] == 6
+    finally:
+        original.close()
+        if target: target.close()
+
+
+def test_edited_partial_video_reencodes_and_audio_only_errors_are_not_swallowed(config, videos, monkeypatch):
+    from tinysearch import media
+    config = replace(config, backend='mlx', enable_images=False, enable_video=True,
+                     enable_audio=True, audio_segment_seconds=10)
+    monkeypatch.setattr(media, 'audio_samples', lambda *a: (_ for _ in ()).throw(ValueError('Invalid audio')))
+    engine = VideoEngine(); store = Store(config, engine)
+    try:
+        store.index(); assert engine.video_calls == 3
+        videos.rows[-1] = {**videos.rows[-1], 'modified':2}
+        monkeypatch.setattr(media, 'audio_samples', lambda *a:np.ones(16000, dtype=np.float32))
+        assert not store.index()['errors'] and engine.video_calls == 6
+    finally: store.close()
+    other = replace(config, enable_video=False, database=config.database.with_name('audio-only.sqlite3'))
+    monkeypatch.setattr(media, 'audio_samples', lambda *a: (_ for _ in ()).throw(ValueError('Invalid audio')))
+    store = Store(other, VideoEngine())
+    try:
+        assert store.index()['errors'] and store.status()['files'] == 0
+    finally: store.close()
 
 
 @pytest.mark.parametrize('backend', ['mlx','coreml'])

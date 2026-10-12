@@ -1,6 +1,6 @@
-# Apple Photos (development)
+# Apple Photos
 
-This importer is in development and is not part of release 0.5.1 or the submitted Store package.
+Available in the current 0.6.0 source, which is not released yet. The published 0.5.1 packages and submitted Store package do not include this importer.
 
 In Model Settings, enable **Search photos and videos in the Photos library**, choose **Actions → Connect Apple Photos**, and allow the macOS permission request. Apply the settings and choose **Update Search Index**. The existing content switches apply to both folders and Photos: **Photographs and images**, **Video scenes**, and **Audio and video soundtracks**. You can index video without photographs, or only video soundtracks. Folder and Photos results use the same selected model's index; changing the model still selects its own vector space.
 
@@ -8,7 +8,7 @@ Cloud downloads are off by default. Enable **Allow iCloud downloads** to include
 
 Each photo retains one vector and a small list thumbnail in the index. The temporary model input is deleted after processing. Larger previews are obtained on selection and share the bounded 32 MB preview cache. With no network or revoked permission, an already indexed thumbnail can still be shown. **Open in Photos** opens the original asset in Apple's app.
 
-Videos use the same scene and soundtrack pipeline as ordinary video files, with both MLX and Core ML. PhotoKit supplies the current asset; AVFoundation prepares edited compositions when necessary. Local unedited videos are decoded through a temporary link rather than copied. Edited videos use a temporary 720p representation. Temporary links and exports are removed after each asset, including on cancellation; original videos are never deleted. Duration and file-size limits apply, and long clips are skipped rather than truncated.
+Videos use the same scene and soundtrack pipeline as ordinary video files, with both MLX and Core ML. PhotoKit supplies the current asset; AVFoundation prepares edited compositions when necessary. The authorized helper copies unedited videos into its private temporary folder so the decoder can read them without permission to the protected Photos library. This preserves the original encoded bytes. Edited videos use a temporary 720p representation. Temporary copies and exports are removed after each asset, including on cancellation; original videos are never deleted. Duration and file-size limits apply, and long clips are skipped rather than truncated.
 
 Each video scene and audio window retains one vector. With 512-dimensional float32 vectors, 10-second scenes use about 0.74 MB/hour; 10-second audio windows with a 2-second overlap use about 0.92 MB/hour. These are vector bytes only; thumbnails, metadata and bounded preview caches add storage. Photos library status reports indexed photo/video counts and actual vector bytes separately. Video previews use the matched scene's timestamp; **Open Matched Segment** prepares a short local clip in the shared 64 MB segment cache. **Open in Photos** opens the full original video.
 
@@ -19,3 +19,7 @@ Repeat **Update Search Index** to add new assets, retry unavailable cloud assets
 The importer stops when less than 512 MB of disk space remains. Only one temporary representation is held at a time. Exports are cancelled if they exceed the configured media size limit or available space falls below this threshold. The macOS Photos cache has its own storage policy and cannot be capped by this importer. Live Photos are indexed as photographs; their paired motion resource is not separately indexed as a video.
 
 The helper uses its own app identity, `app.semanticsearch.photos`, for library permission. Development and unsigned releases are ad-hoc signed; rebuilding/updating them may require granting permission again. A stable Developer ID signature can improve permission continuity in future releases.
+
+If a video's audio cannot be decoded, its completed visual scenes remain searchable. The update report records incomplete audio separately from skipped assets. The next incremental update retries missing audio windows while reusing completed scene and soundtrack vectors; cancellation preserves the prior partial index.
+
+**Copy Photo** copies the current full-resolution rendition as lossless PNG to the macOS clipboard for pasting into other apps. Photos remain unchanged; iCloud access follows the download switch. Clipboard export supports up to 64 megapixels and 128 MiB of encoded PNG data, with a clear error for larger images. Photo/video creation dates are fetched from PhotoKit metadata on demand and cached separately from embeddings; no vector rebuild is required. Internal asset links are not shown or copied as user-facing details.

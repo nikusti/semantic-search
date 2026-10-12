@@ -13,6 +13,8 @@ Try “a project migration checklist”, “a person standing near a window”, 
 
 Documents, images, video and audio have independent switches. Video and audio start disabled. Text queries load only the text encoder, including searches for indexed photos, video scenes and sounds. The combined text/vision encoder loads only when indexing images or video, replaces the text-only worker instead of running a second copy, and exits when the indexing pass finishes. Audio encoding loads in a separate worker only when indexing sound.
 
+In the unreleased 0.6.0 source, **Search photos and videos in the Photos library** adds Apple Photos as another source. Connect it in Actions, grant macOS permission, apply the settings and update the index. Existing content switches apply to folders and Photos alike. Optional iCloud downloads are off by default. Photos results show creation dates, open in Photos and offer full-resolution **Copy Photo**; video results can open the matched clip. See [Apple Photos](APPLE_PHOTOS.md) for cloud storage, permissions and limits.
+
 ## Folders and indexing
 
 Choose folders using **Folders to Search** in Model Settings. Remove a selected folder to stop searching it after applying settings. A new folder selection gets its own compatible index. Previously saved indexes remain on disk. Each model remembers its own content and chunk settings. Returning to the same model and settings reopens its existing index; it does not regenerate unchanged vectors. Compatible text/photo vectors can be reused across content selections within the same model revision and chunk settings.
@@ -71,11 +73,11 @@ To update the extension, install its newer package. Models and indexes stay in s
 
 Inference, indexing and previews run locally. Raycast writes temporary JPEG preview files in its own support folder, removes them on selection changes, and expires interrupted sessions on the next preview request after 15 minutes. Tinycast keeps previews inline. Files are not sent to a cloud inference service. Internet access is required for the initial model download; the bundled engine installs offline. The service binds only to loopback and rejects browser-origin requests. Other local processes can access it. Local indexes contain paths and extracted content.
 
-- Only readable files in your chosen folders are indexed. Apple Photos libraries and remote iCloud-only assets need a dedicated importer, which is not included.
+- Folder indexing reads only your selected readable folders. Apple Photos access requires explicit macOS permission; importing iCloud-only assets requires enabling downloads. Apple controls its own Photos cache and may download a full original even when a smaller image is requested.
 - Scanned PDFs without an extractable text layer need OCR, which is not included.
 - Audio search embeds sounds; it does not transcribe or identify speakers or songs.
 - Video sampling may miss brief events between sampled frames.
-- Video rotation metadata is not currently applied by the bundled decoder; some phone recordings may appear sideways in sampled previews.
+- Photos video previews and matched clips apply orientation metadata. The established ordinary-file sampling pipeline retains its existing orientation behavior.
 - Limits are 32 MB/document and 1 GB / 2 hours/media file. Larger media files are skipped rather than silently truncated.
 - The release contains no model weights, personal library, existing configuration or indexes.
 

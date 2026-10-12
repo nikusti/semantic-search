@@ -21,6 +21,8 @@ python scripts/configure.py --root "$HOME/Documents"
 
 For this development service, enter `http://127.0.0.1:8765` in the extension's optional Custom Local Service preference. The packaged engine uses port 8766 and shared configuration instead. Do not run two services indexing the same database concurrently.
 
+To test Apple Photos from source, build its native helper with `python scripts/build_photos.py` before connecting the library. This requires Xcode Command Line Tools. The helper requests its own macOS Photos permission; tests use synthetic data and do not require access to a real library.
+
 ## Console use without a launcher
 
 The service and CLI can run without Tinycast or Raycast. After extracting the ready package, extract `assets/runtime.zip` with macOS Archive Utility. Use its embedded `python/bin/python3.12`; a system Python installation is unnecessary. Run `python3.12 -I -B -m tinysearch.runtime` to start the service and create shared settings. Configure folders/model through the local `/v1/settings` API or the generated `config.toml` before indexing. This is an advanced flow; launcher setup is the ordinary user path.
@@ -47,7 +49,7 @@ npm run build
 
 Tinycast can import `extension/dist`. Raycast developers can use `npm run dev` or `npm run build:raycast`. The automatic engine requires the runtime assets generated below; a source checkout intentionally excludes binary runtime assets.
 
-`npm run check` first generates manifest types with the official Raycast compiler into ignored `.build/extension-typecheck`, then checks source and tests. `npm test` runs both runtime-installation tests and nine UI regressions with a mocked launcher and local API; it does not start a launcher or touch your library. Store packages reuse the same UI regression suite.
+`npm run check` first generates manifest types with the official Raycast compiler into ignored `.build/extension-typecheck`, then checks source and tests. `npm test` runs runtime-installation and UI regression tests with a mocked launcher and local API; it does not start a launcher or touch your library. Store packages reuse the same UI regression suite.
 
 ## Tests
 
@@ -69,9 +71,9 @@ npm ci --ignore-scripts
 npm run check
 npm test
 npm run build
-npm run bundle:raycast -- -o ../../semantic-search-v0.5.1.rayext
+npm run bundle:raycast -- -o ../../semantic-search-v0.6.0.rayext
 cd ..
-python scripts/package_release.py --raycast ../semantic-search-v0.5.1.rayext
+python scripts/package_release.py --raycast ../semantic-search-v0.6.0.rayext
 ```
 
 The runtime build also requires Xcode Command Line Tools (Swift, clang, make and pkg-config). It compiles the Core ML bridge and rebuilds PyAV against LGPL-only FFmpeg; `--no-deps` intentionally omits unused GPL codec wheels. Complete native dependency source archives and build recipes accompany binary releases.

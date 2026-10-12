@@ -2,6 +2,8 @@
 
 You need an Apple silicon Mac running macOS 26 or newer. No terminal, Homebrew, Python or Node.js installation is needed for the ready-to-use package.
 
+These steps install the latest published release, **0.5.1**. The repository's **0.6.0 source** adds Apple Photos and later fixes; its installation packages have not been published yet. See [Development](DEVELOPMENT.md) for source builds.
+
 ## Tinycast
 
 1. Download `semantic-search-v0.5.1.zip` from the GitHub release and extract it.

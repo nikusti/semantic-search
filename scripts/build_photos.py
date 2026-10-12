@@ -22,7 +22,8 @@ def build(destination):
     }))
     subprocess.run(['swiftc', '-O', '-module-cache-path', str(ROOT/'.build/photos-module-cache'),
                     '-file-prefix-map', str(ROOT)+'=/source', '-o', str(executable),
-                    str(ROOT/'native/photos/PhotosBridge.swift')], check=True)
+                    str(ROOT/'native/photos/PhotosBridge.swift'), str(ROOT/'native/photos/VideoCopy.swift'),
+                    str(ROOT/'native/photos/PhotoClipboard.swift')], check=True)
     subprocess.run(['codesign', '--force', '--sign', '-', str(app)], check=True)
     return app
 

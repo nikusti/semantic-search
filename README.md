@@ -2,7 +2,7 @@
 <h1 align="center">Semantic Search</h1>
 <p align="center">Find files by what you remember. Local semantic search for Tinycast and Raycast.</p>
 
-Semantic Search finds documents, photos, video scenes and sounds by meaning. Describe what you need, preview a match, and open the original file.
+Semantic Search finds documents, photos, video scenes and sounds by meaning. Describe what you need, preview a match, and open the original file. The current source also supports Apple Photos, including optional downloads of iCloud-only media.
 
 ## Preview
 
@@ -23,7 +23,7 @@ Examples shown in Tinycast. The document and audio examples use synthetic test f
 ## How it works
 
 1. Download **EmbeddingGemma 2** from the model settings. The model runs on your Mac.
-2. Select folders. The engine reads supported files, converts their content into numerical vectors, and saves a local SQLite search index with paths and previews.
+2. Select folders and, optionally, connect Apple Photos. The engine reads supported content, converts it into numerical vectors, and saves a local SQLite search index with references and previews.
 3. Search in natural language. The model converts your query into a vector and compares it with the saved index. Searching indexed photos, video or audio needs only the text encoder; media encoders load when indexing those files.
 
 **Your files and queries stay on your Mac.** Semantic Search includes no analytics or telemetry and disables Hugging Face telemetry. Internet access is needed for requested model downloads and software installation/updates. Indexing, inference, previews and search run locally. This describes this project's behavior, not the launcher's own privacy policy.
@@ -31,6 +31,8 @@ Examples shown in Tinycast. The document and audio examples use synthetic test f
 ## Install
 
 Requires **Apple silicon and macOS 26+**. The [v0.5.1 release](https://github.com/nikusti/semantic-search/releases/tag/v0.5.1) includes Python and the required libraries: no Homebrew, pip or terminal setup.
+
+**Source version 0.6.0 is not released yet.** Apple Photos and the latest clipboard/startup fixes are in this repository; the published 0.5.1 packages and Store submission do not include them yet.
 
 1. Download and extract **semantic-search-v0.5.1.zip**.
 2. Add the extracted **Semantic Search** folder in Tinycast's extension settings, or use **Import Extension** in Raycast.
@@ -56,10 +58,11 @@ The default index uses **512-dimensional float32 vectors** (2,048 bytes each). â
 ## Your library
 
 - **Update Search Index** adds new/changed files, reuses unchanged vectors and removes deleted files. Updates are manual; no background schedule is enabled.
+- **Apple Photos** indexes photographs, video scenes and optional soundtracks with either MLX or Core ML. Enable the source in Model Settings, connect it in Actions and grant macOS permission. iCloud downloads are optional and off by default. Originals stay in Photos; the engine retains vectors and small previews. Results open in Photos, show creation dates and offer **Copy Photo** at full resolution. See [Apple Photos](docs/APPLE_PHOTOS.md).
 - Folder exclusions include subfolders. They can be saved during indexing and remove those records/previews from saved indexes without deleting files.
 - Both launchers use **`~/Library/Application Support/Semantic Search/`** for models, indexes, settings and local logs. The local service listens only on loopback and rejects browser-origin requests; other local processes can access it.
 
-Apple Photos/iCloud-only assets need an importer, which is not included. Scanned PDFs need a text layer; OCR is not included. Audio search matches sounds, not transcripts. Video sampling can miss brief events. See [supported files, limits and advanced options](docs/USAGE.md).
+Scanned PDFs need a text layer; OCR is not included. Audio search matches sounds, not transcripts. Video sampling can miss brief events. See [supported files, limits and advanced options](docs/USAGE.md).
 
 ## Project
 

@@ -91,16 +91,23 @@ final class PhotosBridge: NSObject, NSApplicationDelegate {
                     }
                     return
                 }
-                // Unedited assets can be decoded in place. The temporary symlink
-                // is removed afterwards; the original and Apple's cache are untouched.
+                // PhotoKit grants access to this helper, not the Python decoder.
+                // Copy bytes into the private session; a symlink still points into
+                // the protected library and fails with EPERM in the decoder.
                 if let urlAsset = avAsset as? AVURLAsset, urlAsset.url.isFileURL, audioMix == nil {
                     do {
                         let bytes = (try FileManager.default.attributesOfItem(atPath: urlAsset.url.path)[.size] as? NSNumber)?.int64Value ?? 0
                         guard bytes > 0 && bytes <= maxBytes else {
                             done(["error": "Video exceeds the configured file size limit."]); return
                         }
-                        try FileManager.default.createSymbolicLink(at: output, withDestinationURL: urlAsset.url)
-                        done(metadata().merging(["video": "video.mov"], uniquingKeysWith: { _, new in new }))
+                        exportTask = Task { @MainActor in
+                            do {
+                                try await VideoCopy.copy(from: urlAsset.url, to: output, maxBytes: maxBytes,
+                                                         deadline: started.addingTimeInterval(300), session: self.folder)
+                                guard !completed else { try? FileManager.default.removeItem(at: output); return }
+                                done(metadata().merging(["video": "video.mov"], uniquingKeysWith: { _, new in new }))
+                            } catch { done(["error": "Could not prepare the local video: \(error.localizedDescription)"]) }
+                        }
                     } catch { done(["error": "Could not prepare the local video."]) }
                     return
                 }
@@ -188,11 +195,20 @@ final class PhotosBridge: NSObject, NSApplicationDelegate {
             }
             finish(["assets": rows, "authorization": authorization()]); return
         }
-        guard ["image", "video", "video_frame"].contains(op), let id = value["id"] as? String,
+        guard ["image", "video", "video_frame", "metadata", "copy_image"].contains(op), let id = value["id"] as? String,
               let asset = PHAsset.fetchAssets(withLocalIdentifiers: [id], options: nil).firstObject else {
             finish(["error": "Photo is no longer available in the authorized library."]); return
         }
-        if op != "image" {
+        if op == "metadata" {
+            var details: [String: Any] = ["created_at": NSNull()]
+            if let created = asset.creationDate { details["created_at"] = created.timeIntervalSince1970 }
+            finish(details); return
+        }
+        let copying = op == "copy_image"
+        if copying && (asset.mediaType != .image || asset.pixelHeight <= 0 || asset.pixelWidth > 64_000_000 / asset.pixelHeight) {
+            finish(["error": "This asset is not a supported clipboard photo."]); return
+        }
+        if op != "image" && !copying {
             guard asset.mediaType == .video else { finish(["error": "This asset is not a video."]); return }
             video(asset, value); return
         }
@@ -209,7 +225,7 @@ final class PhotosBridge: NSObject, NSApplicationDelegate {
         var watchdog: Timer?
         var requestID: PHImageRequestID = PHInvalidImageRequestID
         let started = Date()
-        requestID = manager.requestImage(for: asset, targetSize: CGSize(width: edge, height: edge),
+        requestID = manager.requestImage(for: asset, targetSize: copying ? PHImageManagerMaximumSize : CGSize(width: edge, height: edge),
                                         contentMode: .aspectFit, options: options) { image, info in
             DispatchQueue.main.async {
                 guard !completed else { return }
@@ -227,6 +243,13 @@ final class PhotosBridge: NSObject, NSApplicationDelegate {
                 var rect = CGRect(origin: .zero, size: image.size)
                 guard let cg = image.cgImage(forProposedRect: &rect, context: nil, hints: nil) else {
                     self.finish(["error": "Could not decode the photo."]); return
+                }
+                if copying {
+                    do {
+                        try PhotoClipboard.write(cg)
+                        self.finish(["copied": true, "width": cg.width, "height": cg.height])
+                    } catch { self.finish(["error": error.localizedDescription]) }
+                    return
                 }
                 // PhotoKit may return an original larger than requested; bound it again.
                 let scale = min(1, Double(edge) / Double(max(cg.width, cg.height)))
@@ -267,9 +290,13 @@ final class PhotosBridge: NSObject, NSApplicationDelegate {
     }
 }
 
-guard CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--session" else { exit(2) }
-let folder = URL(fileURLWithPath: CommandLine.arguments[2], isDirectory: true)
-let app = NSApplication.shared
-let delegate = PhotosBridge(folder: folder)
-app.delegate = delegate
-app.run()
+@main struct PhotosApp {
+    static func main() {
+        guard CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--session" else { exit(2) }
+        let folder = URL(fileURLWithPath: CommandLine.arguments[2], isDirectory: true)
+        let app = NSApplication.shared
+        let delegate = PhotosBridge(folder: folder)
+        app.delegate = delegate
+        withExtendedLifetime(delegate) { app.run() }
+    }
+}

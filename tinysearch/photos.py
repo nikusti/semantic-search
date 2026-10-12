@@ -70,6 +70,15 @@ class PhotoLibrary:
     def assets(self):
         return self.request('list')['assets']
 
+    def metadata(self, identifier):
+        return self.request('metadata', timeout=15, id=identifier)
+
+    def copy_photo(self, identifier, network=False):
+        result = self.request('copy_image', id=identifier, network=network)
+        if result.get('deferred'):
+            raise RuntimeError('Photo is in iCloud; allow downloads or open it in Photos.')
+        return result
+
     def image(self, identifier, network=False, edge=1024, timeout=180):
         result = self.request('image', timeout=timeout, id=identifier, network=network, edge=edge)
         self.image_name = result.get('name')

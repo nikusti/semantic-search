@@ -101,6 +101,13 @@ def segment(path, output, start, end, video, orient=False):
             target.writeframes((np.clip(samples, -1, 1)*32767).astype('<i2').tobytes())
         return
     info = probe(path)
+    samples = None
+    if info['has_audio']:
+        try:
+            samples = audio(path, start, end)
+        except (ValueError, av.error.FFmpegError):
+            # A malformed soundtrack must not discard a usable visual clip.
+            pass
     with open_media(path) as source, av.open(str(output), 'w', format='mp4') as target:
         stream = source.streams.video[0]
         seek(source, stream, start)
@@ -112,7 +119,7 @@ def segment(path, output, start, end, video, orient=False):
         encoder.pix_fmt = 'yuv420p'
         encoder.bit_rate = 2_000_000
         encoder.options = {'allow_sw': '1'}
-        sound = target.add_stream('aac', rate=16000) if info['has_audio'] else None
+        sound = target.add_stream('aac', rate=16000) if samples is not None else None
         if sound: sound.layout = 'mono'
         previous = -1
         for frame in source.decode(stream):
@@ -135,7 +142,6 @@ def segment(path, output, start, end, video, orient=False):
             for packet in encoder.encode(frame): target.mux(packet)
         for packet in encoder.encode(None): target.mux(packet)
         if sound:
-            samples = audio(path, start, end)
             for offset in range(0, len(samples), 1024):
                 frame = av.AudioFrame.from_ndarray(samples[offset:offset+1024].reshape(1,-1), format='fltp', layout='mono')
                 frame.sample_rate, frame.pts, frame.time_base = 16000, offset, Fraction(1,16000)

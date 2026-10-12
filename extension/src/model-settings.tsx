@@ -61,6 +61,7 @@ type IndexStatus = {
     errors: number;
     deferred_photos?: number;
     deferred_videos?: number;
+    partial_videos?: number;
     finished_at?: number;
     cancelled?: boolean;
   };
@@ -118,7 +119,9 @@ export default function ModelSettings({
   useEffect(() => () => closeRef.current?.(), []);
   const [retry, setRetry] = useState(0);
   const [baseURL, setBaseURL] = useState("");
-  const [setupMessage, setSetupMessage] = useState("Preparing local search…");
+  const [setupMessage, setSetupMessage] = useState(
+    "Connecting to local search…",
+  );
   const [settings, setSettings] = useState<Settings>();
   const [indexStatus, setIndexStatus] = useState<IndexStatus>();
   const [error, setError] = useState("");
@@ -223,7 +226,7 @@ export default function ModelSettings({
       active = false;
       clearInterval(timer);
     };
-  }, [baseURL]);
+  }, [baseURL, retry]);
   useEffect(() => {
     setCustomModel(undefined);
     setModelError("");
@@ -367,7 +370,7 @@ export default function ModelSettings({
       ? `Indexing: ${progress.processed.toLocaleString()} / ${progress.total.toLocaleString()} checked (${Math.floor((progress.processed / progress.total) * 100)}%). ${Math.max(0, progress.total - progress.processed).toLocaleString()} remaining.${progress.errors ? ` ${progress.errors} skipped.` : ""}${progress.current_chunks_total ? `\nCurrent file: ${progress.current_chunks_done} / ${progress.current_chunks_total} segments.` : ""}`
       : "Indexing: discovering files…"
     : lastScan
-      ? `Last ${lastScan.cancelled ? "update cancelled" : "update"}${lastScan.finished_at ? `: ${new Date(lastScan.finished_at * 1000).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}` : ""} · ${changesSummary}${lastScan.errors ? ` · ${lastScan.errors} skipped${settings?.job.report_path ? " (report in Actions)" : ""}` : ""}`
+      ? `Last ${lastScan.cancelled ? "update cancelled" : "update"}${lastScan.finished_at ? `: ${new Date(lastScan.finished_at * 1000).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}` : ""} · ${changesSummary}${lastScan.errors > (lastScan.partial_videos || 0) ? ` · ${lastScan.errors - (lastScan.partial_videos || 0)} skipped${settings?.job.report_path ? " (report in Actions)" : ""}` : ""}${lastScan.partial_videos ? ` · ${lastScan.partial_videos} videos with incomplete audio` : ""}`
       : "Choose folders, then update the search index (⌘R).";
   const indexOverview = `${(indexStatus?.files ?? 0).toLocaleString()} files · ${(indexStatus?.chunks ?? 0).toLocaleString()} vectors${indexStatus?.database_bytes !== undefined ? ` · ${(indexStatus.database_bytes / 1e6).toFixed(1)} MB on disk` : ""}\n${contentCounts || ""}\n${scanSummary}`;
   const operationMessage = applyingSettings
@@ -731,11 +734,11 @@ export default function ModelSettings({
     }
   };
   // Tinycast focuses a form only on mount, so its initial fields must already exist.
-  if (!baseURL)
+  if (!baseURL && error)
     return (
       <EngineSetup
         message={error || setupMessage}
-        failed={!!error}
+        failed={true}
         retry={() => setRetry((value) => value + 1)}
       />
     );
@@ -743,24 +746,23 @@ export default function ModelSettings({
     return (
       <List isLoading={!error}>
         <List.Item
-          title={error ? "Setup Needs Attention" : setupMessage}
+          title={error ? "Couldn’t Load Settings" : "Loading settings…"}
           subtitle={
             error ||
-            "The local engine is prepared automatically on first launch."
+            (!baseURL && setupMessage !== "Connecting to local search…"
+              ? setupMessage
+              : undefined)
           }
-          icon={error ? Icon.ExclamationMark : Icon.Download}
+          icon={error ? Icon.ExclamationMark : Icon.Gear}
           actions={
-            <ActionPanel>
-              <Action
-                title="Retry Setup"
-                onAction={() => {
-                  setError("");
-                  void connectService(setSetupMessage)
-                    .then(setBaseURL)
-                    .catch((e) => setError(String(e)));
-                }}
-              />
-            </ActionPanel>
+            error ? (
+              <ActionPanel>
+                <Action
+                  title="Retry Loading Settings"
+                  onAction={() => setRetry((value) => value + 1)}
+                />
+              </ActionPanel>
+            ) : undefined
           }
         />
       </List>

@@ -9,12 +9,14 @@
 
 ## Next development
 
-### Apple Photos and iCloud library — in development
+### Apple Photos and iCloud library — implemented, release pending
 
-The local PhotoKit importer supports photographs and videos, with explicit library permission, optional iCloud downloads, shared scene/soundtrack indexing for MLX and Core ML, persistent vectors/small thumbnails, bounded previews, progress/cancellation, and incremental updates. A real 100-photo import/search check and synthetic photo/video/soundtrack flows with both models have passed, including previews, matched clips and text-only search after unloading. Phone-video rotation is covered by a real decoder/segment regression. Real-library video and installation checks remain part of development validation before shipping. Folder indexes remain intact. Keep all processing on the Mac; do not introduce remote processing without an explicit decision.
+The 0.6.0 source includes the native PhotoKit importer for photographs and videos, optional iCloud downloads, incremental updates/cancellation, bounded temporary files and previews, full-resolution clipboard copying and creation dates. Both MLX and Core ML use the shared scene/soundtrack pipeline. Partial video soundtracks can be retried without rebuilding completed scenes. Text searches use saved vectors without loading media encoders.
+
+Independent source review, isolated installer tests with both models, a real 1,000-photo/50-video comparison and a complete library import with 100 retrieval queries have been completed locally. Phone-video orientation, cancellation, exclusions, originals preservation and index-preserving model deletion are covered by regressions. Published installation packages and the Store submission remain on 0.5.1 until the next release is prepared.
 
 ### Automatic incremental indexing
 
 Design an optional schedule or watcher that updates new, changed and deleted files using the existing incremental scanner. Respect exclusions, cancellation, power/battery limits and model unloading. Keep manual Update Search Index available. Decide between a lightweight macOS mechanism and an agent only after measuring the requirements.
 
-Automatic indexing remains queued. Photos development can continue while Store review is pending. Keep changes separate from the submitted version until tested and ready for a new release.
+Automatic indexing remains queued. Update the Store submission after publishing the next companion release so its metadata and engine payload refer to the same tested version.
