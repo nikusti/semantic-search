@@ -2,7 +2,7 @@
 
 The complete published version history is kept here. Earlier installation archives are retired from this repository; use the latest release. Dates are in UTC.
 
-## [0.6.5] - Unreleased
+## [0.6.5] - 2026-10-12
 
 - Prefer photos over video scenes within a 0.03 cosine-similarity margin in All Files. Preserve stronger video matches, raw scores, document/audio positions, best-segment timestamps and explicit content filters; existing vectors need no rebuilding.
 

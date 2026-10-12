@@ -27,6 +27,10 @@ Version 0.6.3 adds cumulative folder selection, a visible source list and remova
 
 Independent backend and launcher reviewers reproduced settings-request races, retained nested-source cleanup, offline-source validation and image/video content-toggle combinations. The fixes and regression coverage passed repeated independent review, full engine/extension checks and isolated package tests with both models. Version 0.6.4 preserves existing vectors; earlier release archives remain unchanged.
 
+### Photo preference — released in 0.6.5
+
+All Files prefers photographs over video scenes within a small similarity margin. Stronger video matches, explicit filters, document/audio positions and original segment timestamps are preserved. Existing vectors stay compatible.
+
 ### Automatic incremental indexing
 
 Version 0.7.0 is planned to use opt-in background commands supported by both launchers, without a separate LaunchAgent. Keep one incremental engine, charging/schedule conditions, pause/resume/cancel, and manual Update Search Index. Automatic jobs must stop when their launcher exits or their extension is removed, recover from sleep/restart using committed entries, and avoid duplicate work across hosts.
