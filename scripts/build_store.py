@@ -95,7 +95,17 @@ The engine listens only on loopback, rejects browser origins, and requires an in
 
 Source, release notices and matching native dependency sources: [Semantic Search](https://github.com/nikusti/semantic-search).
 ''')
-    shutil.copyfile(source / 'CHANGELOG.md', output / 'CHANGELOG.md')
+    # Store starts with one entry; shared extension keeps its release history.
+    (output / 'CHANGELOG.md').write_text('''# Semantic File Search Changelog
+
+## [Initial Version] - {PR_MERGE_DATE}
+
+- Search local documents, photographs, video scenes and sounds by meaning with on-device embeddings.
+- Manage models, folders, exclusions and incremental indexing from Search Files.
+- Include optional Apple Photos indexing, full-resolution photo copying and creation dates.
+- Offer optional scheduled library updates with power conditions and pause/resume.
+- Connect to a separately installed local engine with authenticated library requests; files and queries stay on the Mac.
+''')
     screenshots = ROOT / 'extension/metadata'
     if screenshots.is_dir(): shutil.copytree(screenshots, output / 'metadata')
     forbidden = {'runtime.zip', 'node_modules', '.build', 'tests', 'scripts'}
