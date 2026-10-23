@@ -5,6 +5,8 @@ from typing import Literal
 from .worker import ManagedEngine
 from .store import Store
 import threading
+import secrets
+from .auth import TOKEN_HEADER, load_or_create_token, token_path
 from .settings import Settings
 
 
@@ -85,6 +87,7 @@ class FolderRemoveRequest(BaseModel):
 
 
 def create_app(config, engine=None, request_stop=None):
+    auth_token = load_or_create_token(config)
     operation_lock = threading.RLock()
     @asynccontextmanager
     async def lifespan(app):
@@ -100,6 +103,7 @@ def create_app(config, engine=None, request_stop=None):
                     app.state.engine.close()
 
     app = FastAPI(title="Semantic Search", lifespan=lifespan)
+    app.state.auth_token_path = token_path(config)
 
     def launcher_owner(body):
         owner = body.launcher.model_dump() if body and body.launcher else None
@@ -126,6 +130,13 @@ def create_app(config, engine=None, request_stop=None):
         host = request.headers.get("host", "").split(":")[0]
         if host not in {"127.0.0.1", "localhost", "testserver"} or request.headers.get("origin"):
             return JSONResponse({"detail": "Local launcher/CLI access only"}, status_code=403)
+        # Only the minimal identity/version probe is public so launchers can
+        # discover and upgrade an older engine. Library data and all actions
+        # require the per-install credential, including newly added routes.
+        if not (request.method == 'GET' and request.url.path == '/v1/info'):
+            provided = request.headers.get(TOKEN_HEADER, '')
+            if not secrets.compare_digest(provided.encode('utf-8'), auth_token.encode('ascii')):
+                return JSONResponse({"detail": "Engine authentication required"}, status_code=401)
         return await call_next(request)
 
     @app.get("/v1/status")

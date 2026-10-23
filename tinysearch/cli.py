@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import urllib.request
 from .config import Config
+from .auth import TOKEN_HEADER, local_urlopen, read_token, token_path
 
 
 def main():
@@ -29,16 +30,17 @@ def main():
         body = {}
     elif args.command == "search":
         body = {"query": args.query, "kind": args.kind}
-    request = urllib.request.Request(f"http://127.0.0.1:{config.port}/v1/{args.command}",
-        data=json.dumps(body).encode() if body is not None else None,
-        headers={"Content-Type": "application/json"})
     try:
-        with urllib.request.urlopen(request, timeout=3600) as response:
+        token = read_token(token_path(config))
+        request = urllib.request.Request(f"http://127.0.0.1:{config.port}/v1/{args.command}",
+            data=json.dumps(body).encode() if body is not None else None,
+            headers={"Content-Type": "application/json", TOKEN_HEADER: token})
+        with local_urlopen(request, timeout=3600) as response:
             data = json.load(response)
             for result in data.get("results", []):
                 result.pop("thumbnail", None)
             print(json.dumps(data, ensure_ascii=False, indent=2))
-    except urllib.error.URLError as error:
+    except (urllib.error.URLError, OSError, ValueError) as error:
         parser.exit(1, f"Search service unavailable: {error}\nStart: .venv/bin/python -m tinysearch serve\n")
 
 

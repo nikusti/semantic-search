@@ -172,7 +172,7 @@ def test_legacy_settings_preserve_source_and_photos_only_root_is_valid(config, l
 
 
 def test_photos_api_is_explicit_and_uses_mac_permission(config, library):
-    from fastapi.testclient import TestClient
+    from authenticated_client import TestClient
     from tinysearch.server import create_app
     def request(self, op):
         return {'authorization':'authorized'} if op == 'authorize' else {'photos':len(self.rows)}
@@ -187,7 +187,7 @@ def test_photos_api_is_explicit_and_uses_mac_permission(config, library):
 
 
 def test_photo_copy_and_capture_date_use_indexed_assets_without_reencoding(config, library):
-    from fastapi.testclient import TestClient
+    from authenticated_client import TestClient
     from tinysearch.server import create_app
     calls = []
     library.metadata = lambda self, identifier: calls.append(('metadata',identifier)) or {'created_at': 1700000000}
@@ -218,7 +218,7 @@ def test_photo_copy_preserves_network_policy_and_reports_unavailable_asset(confi
         assert network is False
         raise RuntimeError('Photo is in iCloud; allow downloads or open it in Photos.')
     library.copy_photo = copy
-    from fastapi.testclient import TestClient
+    from authenticated_client import TestClient
     from tinysearch.server import create_app
     with TestClient(create_app(config, Engine())) as client:
         client.post('/v1/index')
@@ -251,7 +251,7 @@ def test_low_disk_stops_without_pruning_unvisited_photos(config, library, monkey
 
 def test_slow_cloud_preview_does_not_block_search_or_queue_other_previews(config, library, monkeypatch):
     import threading
-    from fastapi.testclient import TestClient
+    from authenticated_client import TestClient
     from tinysearch.server import create_app
     entered, release = threading.Event(), threading.Event()
     original = Store._photos_preview
@@ -559,7 +559,7 @@ def test_photos_settings_allow_video_library_without_images(config):
 
 def test_slow_photos_segment_does_not_block_text_queries(config, videos, monkeypatch):
     import threading
-    from fastapi.testclient import TestClient
+    from authenticated_client import TestClient
     from tinysearch.server import create_app
     from tinysearch import media
     config = replace(config, backend='mlx', enable_video=True)

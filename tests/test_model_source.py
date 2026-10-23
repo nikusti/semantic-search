@@ -5,7 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 import time
 
-from fastapi.testclient import TestClient
+from authenticated_client import TestClient
 import numpy as np
 import pytest
 from safetensors.numpy import save_file

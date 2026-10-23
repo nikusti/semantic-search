@@ -5,7 +5,7 @@ import sqlite3
 import threading
 import time
 
-from fastapi.testclient import TestClient
+from authenticated_client import TestClient
 import pytest
 from tinysearch.config import Config
 from tinysearch.engine import engine_identity

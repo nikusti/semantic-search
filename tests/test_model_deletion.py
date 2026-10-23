@@ -3,7 +3,7 @@ import time
 import json
 import os
 import numpy as np
-from fastapi.testclient import TestClient
+from authenticated_client import TestClient
 from test_worker import fake_worker
 from tinysearch.config import Config
 from tinysearch.worker import ManagedEngine

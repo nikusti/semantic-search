@@ -40,7 +40,7 @@ def extension_marker(folder):
     path = Path(folder)
     content = (path/'package.json').read_bytes()
     package = json.loads(content)
-    if not isinstance(package, dict) or package.get('name') != 'semantic-search':
+    if not isinstance(package, dict) or package.get('name') not in {'semantic-search', 'semantic-file-search'}:
         raise ValueError('This is not the Semantic Search extension')
     stat = path.stat()
     return f'{stat.st_dev}:{stat.st_ino}:' + hashlib.sha256(content).hexdigest()

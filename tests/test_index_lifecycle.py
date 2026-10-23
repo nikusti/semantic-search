@@ -2,7 +2,7 @@ from dataclasses import replace
 import threading
 import time
 from contextlib import nullcontext
-from fastapi.testclient import TestClient
+from authenticated_client import TestClient
 from test_store import FakeEngine
 from tinysearch.config import Config
 from tinysearch.engine import engine_identity

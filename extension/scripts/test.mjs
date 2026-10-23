@@ -24,6 +24,9 @@ try {
             { filter: /^react(?:\/jsx-runtime|-test-renderer)?$/ },
             (args) => ({ path: require.resolve(args.path), external: true }),
           );
+          builder.onResolve({ filter: /^\.\/engine-auth$/ }, () => ({
+            path: resolve("tests/raycast-mock.tsx"),
+          }));
           builder.onResolve({ filter: /^@raycast\/api$/ }, () => ({
             path: resolve("tests/raycast-mock.tsx"),
           }));

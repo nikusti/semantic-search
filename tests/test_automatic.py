@@ -3,7 +3,7 @@ from pathlib import Path
 import threading
 import time
 
-from fastapi.testclient import TestClient
+from authenticated_client import TestClient
 import pytest
 
 from tinysearch.automatic import AutomaticIndexing
@@ -240,21 +240,22 @@ def test_invalid_preferences_fail_closed_and_invalid_owner_cannot_enable(service
     assert not automatic.status()['enabled']
 
 
-def test_owner_checks_process_birth_and_removed_extension(monkeypatch,tmp_path):
+@pytest.mark.parametrize('extension_name,host', [('semantic-search','Tinycast'), ('semantic-file-search','Raycast')])
+def test_owner_checks_process_birth_and_removed_extension(monkeypatch,tmp_path,extension_name,host):
     folder=tmp_path/'extension'
     folder.mkdir()
-    (folder/'package.json').write_text(json.dumps({'name':'semantic-search'}))
-    owner={**OWNER,'extension_path':str(folder),'extension_marker':launcher.extension_marker(folder)}
+    (folder/'package.json').write_text(json.dumps({'name':extension_name}))
+    owner={**OWNER,'host':host,'extension_path':str(folder),'extension_marker':launcher.extension_marker(folder)}
     process={'pid':owner['pid'],'parent':1,'started':owner['started'],'executable':owner['executable']}
     monkeypatch.setattr(launcher,'process_snapshot',lambda pid:process)
-    monkeypatch.setattr(launcher,'launcher_name',lambda executable:'Tinycast')
+    monkeypatch.setattr(launcher,'launcher_name',lambda executable:host)
     assert launcher.owner_alive(owner)
     process['started']='a reused PID'
     assert not launcher.owner_alive(owner)
     process['started']=owner['started']
     folder.rename(tmp_path/'uninstalled-extension')
     folder.mkdir()
-    (folder/'package.json').write_text(json.dumps({'name':'semantic-search'}))
+    (folder/'package.json').write_text(json.dumps({'name':extension_name}))
     assert not launcher.owner_alive(owner)
 
 
@@ -333,6 +334,8 @@ def test_malformed_extension_and_app_metadata_fail_closed(monkeypatch,tmp_path):
     monkeypatch.setattr(launcher,'process_snapshot',lambda pid:process)
     monkeypatch.setattr(launcher,'launcher_name',lambda executable:'Tinycast')
     (folder/'package.json').write_text('[]')
+    assert not launcher.owner_alive(owner)
+    (folder/'package.json').write_text('{"name":"unrelated-extension"}')
     assert not launcher.owner_alive(owner)
     monkeypatch.undo()
     import plistlib

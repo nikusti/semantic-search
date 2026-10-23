@@ -1,6 +1,8 @@
 # Machine-specific settings and private runtime data
 config.toml
 config.*.local.toml
+auth-token
+.auth-token-*
 .env
 .env.*
 !.env.example

@@ -3,7 +3,7 @@ import base64
 from io import BytesIO
 import pytest
 from PIL import Image, ImageDraw, ImageChops
-from fastapi.testclient import TestClient
+from authenticated_client import TestClient
 from tinysearch.config import Config
 from tinysearch.server import create_app
 from test_store import FakeEngine

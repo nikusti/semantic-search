@@ -99,3 +99,17 @@ export async function updateCommandMetadata(props: Props) {
 export async function showHUD(message: string) {
   launcher.huds.push(message);
 }
+
+// UI regressions isolate engine transport; runtime.test.ts tests real token handling.
+export const sharedStorage = "/private/tmp/semantic-test-storage";
+export const engineFetch = (input: string, init?: RequestInit) =>
+  fetch(input, init);
+export class EngineTokenMissing extends Error {}
+
+export function configureEngineToken(_base: string, tokenPath = "") {
+  if (tokenPath && !tokenPath.startsWith("/") && !tokenPath.startsWith("~/"))
+    throw new Error(
+      "The custom engine token file must use an absolute path or ~/ path.",
+    );
+}
+export const engineCurlFetch = engineFetch;

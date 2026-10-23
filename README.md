@@ -30,9 +30,9 @@ Examples shown in Tinycast. The document and audio examples use synthetic test f
 
 ## Install
 
-Requires **Apple silicon and macOS 26+**. The [v0.7.0 release](https://github.com/nikusti/semantic-search/releases/tag/v0.7.0) includes Python and the required libraries: no Homebrew, pip or terminal setup.
+Requires **Apple silicon and macOS 26+**. The [v0.7.1 release](https://github.com/nikusti/semantic-search/releases/tag/v0.7.1) includes Python and the required libraries: no Homebrew, pip or terminal setup.
 
-1. Download and extract **semantic-search-v0.7.0.zip**.
+1. Download and extract **semantic-search-v0.7.1.zip**.
 2. Add the extracted **Semantic Search** folder in Tinycast's extension settings, or use **Import Extension** in Raycast.
 3. Open **Semantic Search Model Settings**, choose folders and content types, then **Download & Apply**.
 4. Open **Semantic Search** and describe a file. Files become searchable while indexing continues.
@@ -61,7 +61,7 @@ The default index uses **512-dimensional float32 vectors** (2,048 bytes each). â
 
 - **All Files** gives photos a small preference over similarly matching video scenes. Clearly stronger video matches still rank higher; documents and sounds keep their positions. Choose **Videos** for video-only results. This preference does not change saved vectors or require reindexing.
 - Folder exclusions include subfolders. They can be saved during indexing and remove those records/previews from saved indexes without deleting files.
-- Both launchers use **`~/Library/Application Support/Semantic Search/`** for models, indexes, settings and local logs. The local service listens only on loopback and rejects browser-origin requests; other local processes can access it.
+- Both launchers use **`~/Library/Application Support/Semantic Search/`** for models, indexes, settings and local logs. The local service listens only on loopback and rejects browser-origin requests. The 0.7.1 engine also requires an installation token for library requests; see [local access](docs/USAGE.md#privacy-and-limits).
 
 Scanned PDFs need a text layer; OCR is not included. Audio search matches sounds, not transcripts. Video sampling can miss brief events. See [supported files, limits and advanced options](docs/USAGE.md).
 

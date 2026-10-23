@@ -1754,3 +1754,401 @@ test("paused custom background checks do not obtain an owner or schedule work", 
     environment.launchType = "userInitiated";
   }
 });
+
+for (const newerEdit of [
+  "none",
+  "library",
+  "exclusions",
+  "reverted",
+] as const) {
+  test(`full Apply reconciles canonical paths after indexing while preserving newer ${newerEdit} edits`, async (t) => {
+    launcher.serviceURL = "http://127.0.0.1:18799";
+    let poll!: () => void;
+    t.mock.method(globalThis, "setInterval", (callback: () => void) => {
+      poll = callback;
+      return 1;
+    });
+    t.mock.method(globalThis, "clearInterval", () => {});
+    let server = {
+      ...current,
+      excluded_paths: ["/private/tmp/z-private", "/private/tmp/z-secret"],
+    };
+    let jobState = "complete";
+    let posted!: typeof current;
+    t.mock.method(
+      globalThis,
+      "fetch",
+      async (url: string, init?: RequestInit) => {
+        if (init?.method === "POST") {
+          assert.ok(url.endsWith("/v1/settings"));
+          posted = JSON.parse(String(init.body));
+          server = {
+            ...current,
+            ...posted,
+            roots: [...posted.roots].sort(),
+            excluded_paths: [...posted.excluded_paths].sort(),
+          };
+          jobState = "indexing";
+          return response({ state: "applying" });
+        }
+        return response(
+          url.endsWith("/v1/status")
+            ? { ...status, indexing: jobState === "indexing" }
+            : { ...snapshot(server), job: { state: jobState } },
+        );
+      },
+    );
+    let view!: ReactTestRenderer;
+    const addedRoot = "/private/tmp/additional-source";
+    const addedExclusion = `${addedRoot}/excluded`;
+    const laterRoot = "/private/tmp/later-source";
+    const laterExclusion = "/private/tmp/later-private";
+    try {
+      await act(async () => {
+        view = create(createElement(ModelSettings));
+      });
+      await act(async () => {
+        field(view, "FilePicker", "roots").props.onChange([addedRoot]);
+        field(view, "Checkbox", "enable_video").props.onChange(true);
+        field(view, "Checkbox", "edit_exclusion_paths").props.onChange(true);
+      });
+      await act(async () => {
+        field(view, "TextArea", "excluded_paths").props.onChange(
+          [...server.excluded_paths, addedExclusion].join("\n"),
+        );
+      });
+      await act(async () => {
+        await field(view, "SubmitForm").props.onSubmit();
+      });
+      assert.deepEqual(posted.roots, [...current.roots, addedRoot]);
+      assert.equal(posted.excluded_paths.at(-1), addedExclusion);
+      if (newerEdit === "library") {
+        await act(async () => {
+          field(view, "Checkbox", "show_advanced").props.onChange(true);
+        });
+        await act(async () => {
+          field(view, "Dropdown", "dimensions").props.onChange("256");
+          field(view, "FilePicker", "roots").props.onChange([laterRoot]);
+        });
+      } else if (newerEdit === "reverted") {
+        await act(async () => {
+          field(view, "Checkbox", "enable_video").props.onChange(false);
+        });
+      } else if (newerEdit === "exclusions") {
+        await act(async () => {
+          field(view, "TextArea", "excluded_paths").props.onChange(
+            [...posted.excluded_paths, laterExclusion].join("\n"),
+          );
+        });
+      }
+      // Real engines publish canonical settings while their Apply-triggered scan runs.
+      await act(async () => {
+        poll();
+      });
+      await act(async () => {
+        poll();
+      });
+      if (newerEdit === "reverted")
+        assert.equal(
+          field(view, "Checkbox", "enable_video").props.value,
+          false,
+          "a later reversion to the old server value remains a draft",
+        );
+      jobState = "complete";
+      await act(async () => {
+        poll();
+      });
+      const expectedExclusions =
+        newerEdit === "exclusions"
+          ? [...posted.excluded_paths, laterExclusion]
+          : server.excluded_paths;
+      assert.deepEqual(
+        parseFolderPaths(field(view, "TextArea", "excluded_paths").props.value),
+        expectedExclusions,
+      );
+      assert.equal(
+        field(view, "SubmitForm").props.title,
+        newerEdit === "none" ? "Update Search Index" : "Apply",
+      );
+      if (newerEdit === "library") {
+        assert.equal(field(view, "Dropdown", "dimensions").props.value, "256");
+        assert.deepEqual(folderList(view).split("\n"), [
+          ...server.roots,
+          laterRoot,
+        ]);
+      }
+      server = {
+        ...server,
+        excluded_paths: [
+          ...server.excluded_paths,
+          "/private/tmp/server-added-private",
+        ].sort(),
+      };
+      await act(async () => {
+        poll();
+      });
+      assert.deepEqual(
+        parseFolderPaths(field(view, "TextArea", "excluded_paths").props.value),
+        newerEdit === "exclusions" ? expectedExclusions : server.excluded_paths,
+        "accepted exclusions follow external changes; a genuinely newer exclusion draft survives",
+      );
+    } finally {
+      await act(async () => {
+        view?.unmount();
+      });
+    }
+  });
+}
+
+test("unchanged exclusion fields follow repeated external updates during an Apply-triggered scan", async (t) => {
+  launcher.serviceURL = "http://127.0.0.1:18799";
+  let poll!: () => void;
+  t.mock.method(globalThis, "setInterval", (callback: () => void) => {
+    poll = callback;
+    return 1;
+  });
+  t.mock.method(globalThis, "clearInterval", () => {});
+  let server = { ...current };
+  let jobState = "complete";
+  t.mock.method(
+    globalThis,
+    "fetch",
+    async (url: string, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        server = { ...current, ...JSON.parse(String(init.body)) };
+        jobState = "indexing";
+        return response({ state: "applying" });
+      }
+      return response(
+        url.endsWith("/v1/status")
+          ? { ...status, indexing: jobState === "indexing" }
+          : { ...snapshot(server), job: { state: jobState } },
+      );
+    },
+  );
+  let view!: ReactTestRenderer;
+  try {
+    await act(async () => {
+      view = create(createElement(ModelSettings));
+    });
+    await act(async () => {
+      field(view, "Checkbox", "enable_video").props.onChange(true);
+      field(view, "Checkbox", "edit_exclusion_paths").props.onChange(true);
+    });
+    await act(async () => {
+      await field(view, "SubmitForm").props.onSubmit();
+    });
+    for (const path of [
+      "/private/tmp/server-first",
+      "/private/tmp/server-second",
+    ]) {
+      server = { ...server, excluded_paths: [...server.excluded_paths, path] };
+      await act(async () => {
+        poll();
+      });
+      assert.deepEqual(
+        parseFolderPaths(field(view, "TextArea", "excluded_paths").props.value),
+        server.excluded_paths,
+      );
+    }
+    jobState = "complete";
+    await act(async () => {
+      poll();
+    });
+    assert.equal(field(view, "SubmitForm").props.title, "Update Search Index");
+    server = {
+      ...server,
+      excluded_paths: [...server.excluded_paths, "/private/tmp/server-third"],
+    };
+    await act(async () => {
+      poll();
+    });
+    assert.deepEqual(
+      parseFolderPaths(field(view, "TextArea", "excluded_paths").props.value),
+      server.excluded_paths,
+    );
+  } finally {
+    await act(async () => {
+      view?.unmount();
+    });
+  }
+});
+
+test("saved exclusion edits resume external polling during a still-running Apply scan", async (t) => {
+  launcher.serviceURL = "http://127.0.0.1:18799";
+  let poll!: () => void;
+  t.mock.method(globalThis, "setInterval", (callback: () => void) => {
+    poll = callback;
+    return 1;
+  });
+  t.mock.method(globalThis, "clearInterval", () => {});
+  let server = { ...current };
+  let jobState = "complete";
+  t.mock.method(
+    globalThis,
+    "fetch",
+    async (url: string, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        const body = JSON.parse(String(init.body));
+        if (url.endsWith("/v1/exclusions")) {
+          server = {
+            ...server,
+            excluded_paths: [...body.excluded_paths].sort(),
+          };
+          return response({
+            excluded_paths: server.excluded_paths,
+            excluded_files_removed: 0,
+            excluded_saved_entries_removed: 0,
+            cleanup_pending: 0,
+          });
+        }
+        server = { ...current, ...body };
+        jobState = "indexing";
+        return response({ state: "applying" });
+      }
+      return response(
+        url.endsWith("/v1/status")
+          ? { ...status, indexing: jobState === "indexing" }
+          : { ...snapshot(server), job: { state: jobState } },
+      );
+    },
+  );
+  let view!: ReactTestRenderer;
+  try {
+    await act(async () => {
+      view = create(createElement(ModelSettings));
+    });
+    await act(async () => {
+      field(view, "Checkbox", "enable_video").props.onChange(true);
+      field(view, "Checkbox", "edit_exclusion_paths").props.onChange(true);
+    });
+    await act(async () => {
+      await field(view, "SubmitForm").props.onSubmit();
+    });
+    await act(async () => {
+      poll();
+    });
+    await act(async () => {
+      field(view, "TextArea", "excluded_paths").props.onChange(
+        "/private/tmp/saved-during-scan",
+      );
+    });
+    await act(async () => {
+      await field(view, "SubmitForm").props.onSubmit();
+    });
+    server = {
+      ...server,
+      excluded_paths: [
+        ...server.excluded_paths,
+        "/private/tmp/external-during-scan",
+      ].sort(),
+    };
+    await act(async () => {
+      poll();
+    });
+    assert.deepEqual(
+      parseFolderPaths(field(view, "TextArea", "excluded_paths").props.value),
+      server.excluded_paths,
+    );
+    jobState = "complete";
+    await act(async () => {
+      poll();
+    });
+    assert.equal(field(view, "SubmitForm").props.title, "Update Search Index");
+  } finally {
+    await act(async () => {
+      view?.unmount();
+    });
+  }
+});
+
+test("a newer custom model inspection keeps its content capability changes after Apply completes", async (t) => {
+  launcher.serviceURL = "http://127.0.0.1:18799";
+  let poll!: () => void;
+  let inspect!: () => Promise<void>;
+  t.mock.method(globalThis, "setInterval", (callback: () => void) => {
+    poll = callback;
+    return 1;
+  });
+  t.mock.method(globalThis, "clearInterval", () => {});
+  t.mock.method(
+    globalThis,
+    "setTimeout",
+    (callback: () => Promise<void>, delay: number) => {
+      if (delay === 500) inspect = callback;
+      return 1;
+    },
+  );
+  t.mock.method(globalThis, "clearTimeout", () => {});
+  let server = { ...current };
+  let jobState = "complete";
+  t.mock.method(
+    globalThis,
+    "fetch",
+    async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/v1/models/inspect"))
+        return response({
+          id: "custom",
+          label: "Custom",
+          installed: true,
+          disk_bytes: 1,
+          download_bytes: 1,
+          repo: "owner/model",
+          revision: "a".repeat(40),
+          capabilities: { images: false, video: false, audio: false },
+        });
+      if (init?.method === "POST") {
+        server = { ...current, ...JSON.parse(String(init.body)) };
+        jobState = "indexing";
+        return response({ state: "applying" });
+      }
+      return response(
+        url.endsWith("/v1/status")
+          ? { ...status, indexing: jobState === "indexing" }
+          : { ...snapshot(server), job: { state: jobState } },
+      );
+    },
+  );
+  let view!: ReactTestRenderer;
+  try {
+    await act(async () => {
+      view = create(createElement(ModelSettings));
+    });
+    await act(async () => {
+      field(view, "Checkbox", "enable_video").props.onChange(true);
+    });
+    await act(async () => {
+      await field(view, "SubmitForm").props.onSubmit();
+    });
+    await act(async () => {
+      poll();
+    });
+    await act(async () => {
+      field(view, "Dropdown", "model_variant").props.onChange("custom");
+    });
+    await act(async () => {
+      field(view, "TextField", "model_url").props.onChange(
+        "https://huggingface.co/owner/model",
+      );
+    });
+    await act(async () => {
+      await inspect();
+    });
+    assert.equal(field(view, "Checkbox", "enable_images").props.value, false);
+    assert.equal(field(view, "Checkbox", "enable_video").props.value, false);
+    jobState = "complete";
+    await act(async () => {
+      poll();
+    });
+    assert.equal(
+      field(view, "Dropdown", "model_variant").props.value,
+      "custom",
+    );
+    assert.equal(field(view, "Checkbox", "enable_images").props.value, false);
+    assert.equal(field(view, "Checkbox", "enable_video").props.value, false);
+  } finally {
+    await act(async () => {
+      view?.unmount();
+    });
+  }
+});

@@ -10,6 +10,7 @@ PRIVATE_SUFFIXES = {".sqlite3", ".db", ".npy", ".npz", ".safetensors", ".gguf", 
 # Only the icon and individually reviewed screenshots are public binary assets.
 PUBLIC_PNG_ASSETS = {
     "extension/assets/icon.png",
+    "extension/assets/store-icon.png",
     "docs/screenshots/document-search.png",
     "docs/screenshots/photo-search.png",
     "docs/screenshots/audio-search.png",
@@ -41,7 +42,7 @@ def main():
             continue
         if FORBIDDEN_FOLDERS.intersection(Path(name).parts) or path.suffix.lower() in PRIVATE_SUFFIXES:
             failures.append(f"{name}: runtime data or dependencies")
-        if path.name == "config.toml" or path.name.startswith(".env"):
+        if path.name in {"config.toml", "auth-token"} or path.name.startswith((".env", ".auth-token-")):
             failures.append(f"{name}: local settings")
         content = subprocess.run(["git", "show", f":{name}"], cwd=ROOT, capture_output=True, check=True).stdout
         if len(content) > 1024 * 1024:

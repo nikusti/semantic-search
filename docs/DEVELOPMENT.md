@@ -71,9 +71,9 @@ npm ci --ignore-scripts
 npm run check
 npm test
 npm run build
-npm run bundle:raycast -- -o ../../semantic-search-v0.7.0.rayext
+npm run bundle:raycast -- -o ../../semantic-search-v0.7.1.rayext
 cd ..
-python scripts/package_release.py --raycast ../semantic-search-v0.7.0.rayext
+python scripts/package_release.py --raycast ../semantic-search-v0.7.1.rayext
 ```
 
 The runtime build also requires Xcode Command Line Tools (Swift, clang, make and pkg-config). It compiles the Core ML bridge and rebuilds PyAV against LGPL-only FFmpeg; `--no-deps` intentionally omits unused GPL codec wheels. Complete native dependency source archives and build recipes accompany binary releases.
@@ -96,7 +96,7 @@ This is fresh isolated storage on the test Mac, not a separate macOS account or 
 
 The bundled launcher installs its included runtime once; the Store variant discovers an explicit companion installation. Both start the same detached local Python service. A filesystem installation lock serializes extraction across launchers. The service holds its own lock, so concurrent command launches cannot start duplicate engines for one storage folder.
 
-The parent service remains available while inference workers load on demand and exit after inactivity. Query/session activation loads text only, preserving the configured index identity. An image/video operation replaces that worker with a combined text/vision worker. During a pinned indexing pass it is reused for text and vision, then released; a query outside indexing returns to text-only. Previous workers exit before replacement. The audio worker is loaded only for indexing sound. Bounded decoder subprocesses use the bundled PyAV/FFmpeg libraries and PDFium, with operation timeouts. The HTTP API accepts loopback requests and rejects browser origins.
+The parent service remains available while inference workers load on demand and exit after inactivity. Query/session activation loads text only, preserving the configured index identity. An image/video operation replaces that worker with a combined text/vision worker. During a pinned indexing pass it is reused for text and vision, then released; a query outside indexing returns to text-only. Previous workers exit before replacement. The audio worker is loaded only for indexing sound. Bounded decoder subprocesses use the bundled PyAV/FFmpeg libraries and PDFium, with operation timeouts. The HTTP API accepts loopback requests and rejects browser origins. Starting with 0.7.1, library requests also require the installation token from `auth-token` in configured storage. The CLI reads it automatically. For a custom service using separate storage, set the extension's **Custom Service Token File** preference to that storage's absolute `auth-token` path; leave it blank for the usual shared storage. Minimal `/v1/info` identity discovery remains public.
 
 The Core ML bridge source is in `native/coreml`; vendor code retains its Apache-2.0 license and provenance. Verified pinned Core ML artifacts and processor files are listed in `tinysearch/coreml_assets.json`. Media has bounded input sizes: at most 10 seconds per audio window, 3 video frames and 512 input tokens. MLX and Core ML have separate vector spaces. Model profiles restore each backend's settings; index reuse compares model revision, dimensions and chunk pipeline before copying unchanged vectors.
 

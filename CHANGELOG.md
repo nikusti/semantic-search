@@ -2,6 +2,13 @@
 
 The complete published version history is kept here. Earlier installation archives are retired from this repository; use the latest release. Dates are in UTC.
 
+## [0.7.1] - 2026-10-23
+
+- Authenticate local library requests with a persistent installation token stored with owner-only permissions. Preserve browser-origin and loopback checks; expose only minimal engine identity without authentication.
+- Keep Raycast Store packaging separate from development tests and Tinycast wording. Name the Store extension Semantic File Search, with Search Files as its main command, and retain compatibility with existing shared extensions.
+- Reconcile accepted folder and exclusion changes after settings apply, including intermediate indexing polls, while preserving later user edits and model capability changes.
+- Preserve existing models, indexes and shared storage. Existing clients must be updated together with the authenticated companion engine.
+
 ## [0.7.0] - 2026-10-12
 
 - Add opt-in incremental background updates with 30-minute and 1/3/6/24-hour schedules (1 hour by default) and an external-power condition; off by default.

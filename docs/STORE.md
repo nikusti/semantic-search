@@ -6,7 +6,7 @@ Tinycast enables the [Raycast Store registry](https://tinycast.dev/docs/extensio
 
 Raycast publication creates a pull request in [raycast/extensions](https://github.com/raycast/extensions). The Raycast team reviews it and, after acceptance and merge, publishes the extension. See the [publication workflow](https://developers.raycast.com/basics/publish-an-extension).
 
-The extension has been submitted for review in [raycast/extensions#32190](https://github.com/raycast/extensions/pull/32190). The source repository and companion assets are public. The PR targets the published 0.7.0 companion and includes Apple Photos, clipboard/date actions, startup fixes, incremental scan improvements, independently reviewed folder management and optional scheduled updates. This is an open review, not an accepted Store listing. The GitHub author is subscribed to PR updates.
+The extension has been submitted for review in [raycast/extensions#32190](https://github.com/raycast/extensions/pull/32190). The source repository and companion assets are public. The PR targets the published 0.7.1 companion and includes Apple Photos, clipboard/date actions, startup fixes, incremental scan improvements, independently reviewed folder management and optional scheduled updates. This is an open review, not an accepted Store listing. The GitHub author is subscribed to PR updates.
 
 The submission contains the lightweight launcher UI and four Raycast screenshots using synthetic documents/generated photographs. Engine/model binaries and local library data are not included in the PR. The unsigned companion installer is disclosed in the PR and setup guide; acceptance of this installation design remains a reviewer decision.
 
@@ -24,7 +24,7 @@ Version 0.5.0 provides a Store source package and a native companion installer. 
 
 The submitted Store release uses a companion-engine installer. Published integrations already use this approach: the [LM Studio extension](https://github.com/raycast/extensions/blob/main/extensions/lm-studio/README.md) connects to an independently installed local application. This is a precedent for the design, not approval of Semantic Search.
 
-1. Install **Semantic Search** from the launcher Store.
+1. After Store acceptance, install **Semantic File Search** from the launcher Store.
 2. Open Search. If the engine is missing, show one setup screen explaining that processing is local, the supported Mac requirements, and the required disk space.
 3. Offer **Download Search Engine**, opening the current installer release in the browser. The user explicitly opens a normal macOS installer. It contains Python and all required libraries; there are no Homebrew, npm, pip or terminal steps.
 4. The installer verifies and installs the same pinned runtime used by the ZIP. Returning to the extension detects the installed engine and offers model download and folder selection.
@@ -49,6 +49,14 @@ Use the same atomic installation checks and single-service lock. Updates must fi
 
 Static launcher preferences should use Raycast's preferences API. Model downloads, index status, cancellation and folder management need a library-management screen with live state; discuss its fit with the Store's restriction on separate configuration commands during review. The generated Store package exposes Search and a short no-view background check. Manage Library uses the navigation API to open the shared model/index controls within Search. The ZIP retains its separate settings command for existing users; confirm the live library screen with Store reviewers.
 
+## Review revision for 0.7.1
+
+The source repository remains `nikusti/semantic-search`. The generated Store folder and package name are `semantic-file-search`, titled **Semantic File Search**, with **Search Files** as the main command. The shared development extension retains its existing name and Tinycast support. Both names are accepted by launcher ownership checks.
+
+`build_store.py` omits development tests, test scripts and direct test dependencies, adapts user-facing host wording for Raycast, and regenerates the Store lockfile with npm. Tests remain in this repository and run before packaging. The Store icon has rounded corners, smooth edges and transparent padding. The extension changelog contains one initial-release entry.
+
+Authenticated library requests require the matching 0.7.1 companion. Independent source reviews, native Raycast verification and installer smoke tests were completed, and the maintainer approved publication. Future revisions must validate the companion, both launcher clients and generated Store source, undergo independent review and receive maintainer approval before publication or PR changes.
+
 ## Build the two packages
 
 The same engine payload and manifest must be used by every package. Build/sign the runtime once before building the installer, ZIP and Store package. Do not rebuild or re-sign the payload after generating the Store manifest. The signer reuses an already sealed payload; changing signing identities requires a fresh runtime build.
@@ -60,7 +68,7 @@ python scripts/build_installer.py
 python scripts/build_store.py
 ```
 
-This creates a native installer under `.build/companion` and a small Store source tree under `.build/store/semantic-search`, plus review ZIPs outside the checkout. The Store tree has no runtime archive or model weights. The unsigned installer is not notarized and macOS may require explicit approval when opening a downloaded copy. Disclose this in release notes and during Store review.
+This creates a native installer under `.build/companion` and a small Store source tree under `.build/store/semantic-file-search`, plus review ZIPs outside the checkout. The Store tree has no runtime archive or model weights. The unsigned installer is not notarized and macOS may require explicit approval when opening a downloaded copy. Disclose this in release notes and during Store review.
 
 For an optionally signed and notarized companion build, use an existing Developer ID Application identity and a configured notarytool Keychain profile:
 
@@ -76,10 +84,10 @@ Build both launcher packages only after the final payload is sealed. Run `script
 ## Validation and review status
 
 - Downloaded installer extraction, fresh/repeat installation with a minimal PATH, Store discovery, both built-in models on synthetic text/photos, PDF/photo previews, incremental scans, exclusions, idle unloading, engine restart and index-preserving model deletion have been tested. Raycast UI tests cover setup, text/photo results, previews, Actions shortcuts and library navigation. An isolated Tinycast command also verifies photo search and its inline preview loader. Isolated failed-update tests restarted the previous engine and preserved its data, including a replacement that remained alive and held the service lock. Service/extension tests cover refusal to stop active jobs, data preservation and no executable fallback in Store mode.
-- The Raycast account author is `nik_ustinovich`. Store packages use the official build/lint and upstream metadata validator for four 2000 by 1250 screenshots, a 512-pixel icon, supported category, README and changelog. Version 0.7.0 passes 184 engine/native tests and 45 shared launcher/runtime checks, including 34 Store UI/command regressions. Search, previews, Actions, library navigation and a native scheduled invocation were tested in Raycast against isolated storage. Both launchers have native background activation checks.
+- The Raycast account author is `nik_ustinovich`. Store packages use the official build/lint and upstream metadata validator for four 2000 by 1250 screenshots, a 512-pixel icon, supported category, README and changelog. Version 0.7.1 passes 200 engine/native tests and 61 shared launcher/runtime checks, including 41 Store UI/command regressions. Search, previews, Actions, library navigation and a native scheduled invocation were tested in Raycast against isolated storage. Both launchers have native background activation checks.
 - Optionally add Developer ID signing/notarization for smoother macOS installation. Without it, disclose macOS opening approval. Current validation uses fresh isolated storage and a minimal PATH, not a factory-clean Mac or a separate macOS account.
 - Independent source/history/release-asset privacy and license reviews were completed before publication. The final submission scope and source/package privacy checks passed; reviewed companion assets and matching native dependency sources are public.
-- [Store PR #32190](https://github.com/raycast/extensions/pull/32190) is open for review. Verified automated-review fixes are also in the shared source; the earlier fixes ship in 0.5.1, and the current 0.7.0 submission includes Photos, incremental indexing, folder management, photo preference, scheduled updates and their independently reviewed fixes. Review feedback and CI results belong to that PR. Store acceptance of the companion design remains a reviewer decision.
+- [Store PR #32190](https://github.com/raycast/extensions/pull/32190) is open for review. Verified automated-review fixes are also in the shared source; the earlier fixes ship in 0.5.1, and the current 0.7.1 submission includes Photos, incremental indexing, folder management, photo preference, scheduled updates and their independently reviewed fixes. Review feedback and CI results belong to that PR. Store acceptance of the companion design remains a reviewer decision.
 
 To remove only the engine, close/stop the service and delete its versioned `runtime` folder in shared storage. Keep `models`, `data` and `config.toml` to preserve the library. Removing the installer app itself does not uninstall the installed engine.
 

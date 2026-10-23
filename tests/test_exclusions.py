@@ -5,7 +5,7 @@ from pathlib import Path
 import sqlite3
 import time
 
-from fastapi.testclient import TestClient
+from authenticated_client import TestClient
 from test_store import FakeEngine
 from tinysearch.config import Config
 from tinysearch.engine import engine_identity

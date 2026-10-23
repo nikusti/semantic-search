@@ -3,7 +3,7 @@ import hashlib
 from pathlib import Path
 import numpy as np
 import pytest
-from fastapi.testclient import TestClient
+from authenticated_client import TestClient
 from tinysearch.config import Config
 from tinysearch.engine import normalize
 from tinysearch.server import create_app

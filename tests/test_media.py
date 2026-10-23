@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 from PIL import Image
-from fastapi.testclient import TestClient
+from authenticated_client import TestClient
 from test_store import FakeEngine
 from tinysearch import media
 from tinysearch.config import Config

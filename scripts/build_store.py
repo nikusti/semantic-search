@@ -1,11 +1,33 @@
 """Generate the small Store source package from the shared extension codebase."""
 from hashlib import sha256
 import json
+import os
 from pathlib import Path
 import shutil
+import subprocess
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
+STORE_NAME = 'semantic-file-search'
+STORE_TITLE = 'Semantic File Search'
+
+
+def store_sources(source, output):
+    """Keep host compatibility in shared code; localize only Store-facing text."""
+    shutil.copytree(source / 'src', output / 'src')
+    replacements = {
+        'launcher.ts': [('in Tinycast or Raycast', 'in Raycast')],
+        'launcher-probe.ts': [('from Tinycast or Raycast', 'from Raycast')],
+        'automatic-settings.tsx': [('while Tinycast or Raycast is running', 'while Raycast is running')],
+        'semantic-search.tsx': [('Open Model Settings, add folders', 'Open Manage Library, add folders')],
+    }
+    for name, changes in replacements.items():
+        path = output / 'src' / name
+        text = path.read_text()
+        for before, after in changes:
+            assert text.count(before) == 1, f'Store wording changed in {name}: {before}'
+            text = text.replace(before, after)
+        path.write_text(text)
 
 
 def main():
@@ -14,29 +36,39 @@ def main():
     package = json.loads((source / 'package.json').read_text())
     version = package['version']
     assert manifest['version'] == version, 'Build the matching runtime first'
-    output = ROOT / '.build/store/semantic-search'
+    output = ROOT / '.build/store' / STORE_NAME
     shutil.rmtree(output, ignore_errors=True)
     (output / 'assets').mkdir(parents=True)
-    shutil.copytree(source / 'src', output / 'src')
-    shutil.copyfile(source / 'tsconfig.json', output / 'tsconfig.json')
+    store_sources(source, output)
+    tsconfig = json.loads((source / 'tsconfig.json').read_text())
+    tsconfig['include'] = [entry for entry in tsconfig['include'] if entry != 'tests']
+    (output / 'tsconfig.json').write_text(json.dumps(tsconfig, indent=2) + '\n')
     shutil.copyfile(source / 'eslint.config.js', output / 'eslint.config.js')
-    shutil.copytree(source / 'scripts', output / 'scripts')
-    (output / 'tests').mkdir()
-    for name in ['raycast-mock.tsx', 'regressions.test.tsx']:
-        shutil.copyfile(source / 'tests' / name, output / 'tests' / name)
-    shutil.copyfile(source / 'assets/icon.png', output / 'assets/icon.png')
+    shutil.copyfile(source / 'assets/store-icon.png', output / 'assets/icon.png')
     shutil.copyfile(source / 'assets/runtime-manifest.json', output / 'assets/runtime-manifest.json')
     (output / 'assets/distribution.json').write_text(json.dumps(dict(mode='companion',
         installer_url=f'https://github.com/nikusti/semantic-search/releases/tag/v{version}'), indent=2) + '\n')
     package['commands'] = [entry for entry in package['commands'] if entry['name'] in {'semantic-search','automatic-index'}]
+    package['name'] = STORE_NAME
+    package['title'] = STORE_TITLE
+    for command in package['commands']:
+        if command['name'] == 'semantic-search':
+            command['title'] = 'Search Files'
+            command['subtitle'] = STORE_TITLE
     package['description'] = 'Find local documents, photos, video scenes and sounds by meaning. Requires the Semantic Search Engine.'
     package['preferences'][0]['description'] = 'Leave blank to use the installed Semantic Search Engine. Advanced: connect to your own local service.'
-    package['scripts'] = dict(build='ray build', dev='ray develop', lint='ray lint', publish='ray publish', test='node scripts/test.mjs')
+    package['scripts'] = dict(build='ray build', dev='ray develop', lint='ray lint', publish='ray publish')
+    for name in ('esbuild', 'react-test-renderer', '@types/react-test-renderer'):
+        package['devDependencies'].pop(name, None)
     (output / 'package.json').write_text(json.dumps(package, indent=2) + '\n')
-    lock = json.loads((source / 'package-lock.json').read_text())
-    (output / 'package-lock.json').write_text(json.dumps(lock, indent=2) + '\n')
+    shutil.copyfile(source / 'package-lock.json', output / 'package-lock.json')
+    # npm reconciles the dependency graph; copying the development lock retains
+    # test-only dependencies and an incorrect root package identity.
+    subprocess.run(['npm', 'install', '--package-lock-only', '--ignore-scripts',
+                    '--no-audit', '--no-fund', *(['--offline'] if os.environ.get('SEMANTIC_STORE_OFFLINE') == '1' else [])],
+                   cwd=output, check=True, timeout=180)
     shutil.copyfile(ROOT / 'LICENSE', output / 'LICENSE')
-    (output / 'README.md').write_text(f'''# Semantic Search
+    (output / 'README.md').write_text(f'''# {STORE_TITLE}
 
 Search local files by meaning using EmbeddingGemma 2. Documents, photos, video scenes and sounds are indexed on your Mac. Your files and queries are not uploaded; the project includes no telemetry.
 
@@ -44,7 +76,7 @@ Search local files by meaning using EmbeddingGemma 2. Documents, photos, video s
 
 Apple silicon, macOS 26+, and the separately installed **Semantic Search Engine {version}** are required. Allow about 2.5 GB for engine installation, plus model weights and your library index.
 
-1. Open Semantic Search and choose **Download Search Engine** if the engine is missing.
+1. Open **Search Files** in {STORE_TITLE} and choose **Download Search Engine** if the engine is missing.
 2. Open the companion installer from the release page and click **Install**. Python and decoding libraries are included. No Homebrew or terminal setup.
 3. Return to Search and choose **Check Installation**.
 4. Choose **Manage Library** in Actions, download a model, select folders and apply. Model weights download from Hugging Face.
@@ -57,22 +89,22 @@ MLX 8-bit and Core ML are supported; each model keeps a separate index. Text que
 
 Apple Photos is optional: enable the source in Manage Library, connect it in Actions and allow macOS access. Enable iCloud downloads to include media missing locally. Both models support photographs, video scenes and optional soundtracks. Originals stay in Photos; saved vectors and small thumbnails are retained locally. Photo results show creation dates, open in Photos and offer full-resolution **Copy Photo**. Apple controls its own Photos download cache.
 
-Automatic updates are optional and off by default. Manage Library offers 30-minute and 1/3/6/24-hour schedules (1 hour by default), an external-power condition and pause/resume. Short launcher checks start incremental work without waiting for a long scan. Closing the window is fine; quitting the owning launcher or removing its extension stops the job. Completed files are reused. No LaunchAgent is installed. Run **Activate Background Checks** once in each launcher after enabling updates or reinstalling.
+Automatic updates are optional and off by default. Manage Library offers 30-minute and 1/3/6/24-hour schedules (1 hour by default), an external-power condition and pause/resume. Short Raycast checks start incremental work without waiting for a long scan. Closing the window is fine; quitting Raycast or removing its extension stops the job. Completed files are reused. No LaunchAgent is installed. Run **Activate Background Checks** after enabling updates or reinstalling.
 
-The engine listens only on loopback, rejects browser origins, and is accessible to other local processes. Audio search matches sounds, not transcripts.
+The engine listens only on loopback, rejects browser origins, and requires an installation token for library requests. The token is stored locally with owner-only permissions. Processes able to read the token as the same user can also access the service. Audio search matches sounds, not transcripts.
 
 Source, release notices and matching native dependency sources: [Semantic Search](https://github.com/nikusti/semantic-search).
 ''')
     shutil.copyfile(source / 'CHANGELOG.md', output / 'CHANGELOG.md')
     screenshots = ROOT / 'extension/metadata'
     if screenshots.is_dir(): shutil.copytree(screenshots, output / 'metadata')
-    forbidden = {'runtime.zip', 'node_modules', '.build'}
+    forbidden = {'runtime.zip', 'node_modules', '.build', 'tests', 'scripts'}
     for path in output.rglob('*'):
         assert not forbidden.intersection(path.relative_to(output).parts), f'Unexpected bundled engine asset: {path.name}'
-    archive = ROOT.parent / f'semantic-search-store-v{version}-review.zip'
+    archive = ROOT.parent / f'{STORE_NAME}-store-v{version}-review.zip'
     with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as target:
         for path in sorted(output.rglob('*')):
-            if path.is_file(): target.write(path, 'semantic-search/' + path.relative_to(output).as_posix())
+            if path.is_file(): target.write(path, STORE_NAME + '/' + path.relative_to(output).as_posix())
     (archive.with_suffix('.sha256')).write_text(f'{sha256(archive.read_bytes()).hexdigest()}  {archive.name}\n')
     print(f'Store source package: {archive.name} ({archive.stat().st_size / 1e6:.2f} MB). No executable runtime or model files.')
 

@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 import zipfile
 from package_release import audit
+from build_store import STORE_NAME, STORE_TITLE
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -34,12 +35,21 @@ def main():
             if path.is_file():
                 name = 'NOTICES/' + path.relative_to(ROOT / 'packaging/codec-notices').as_posix()
                 assert archive.read(name) == path.read_bytes(), 'Native dependency notice differs'
-    store = ROOT.parent / f'semantic-search-store-v{version}-review.zip'
+    store = ROOT.parent / f'{STORE_NAME}-store-v{version}-review.zip'
     with zipfile.ZipFile(store) as archive:
         assert archive.testzip() is None, 'Store archive is corrupt'
-        assert json.loads(archive.read('semantic-search/assets/runtime-manifest.json')) == expected, 'Store/runtime hashes differ'
+        assert json.loads(archive.read(f'{STORE_NAME}/assets/runtime-manifest.json')) == expected, 'Store/runtime hashes differ'
+        package = json.loads(archive.read(f'{STORE_NAME}/package.json'))
+        lock = json.loads(archive.read(f'{STORE_NAME}/package-lock.json'))
+        tsconfig = json.loads(archive.read(f'{STORE_NAME}/tsconfig.json'))
+        assert package['name'] == lock['name'] == lock['packages']['']['name'] == STORE_NAME, 'Store package name differs'
+        assert package['title'] == STORE_TITLE, 'Store title differs'
+        assert 'test' not in package['scripts'] and 'tests' not in tsconfig['include'], 'Store contains test setup'
+        for name in ('esbuild', 'react-test-renderer', '@types/react-test-renderer'):
+            assert name not in package['devDependencies'], 'Store contains direct test dependencies'
         for name in archive.namelist():
             if name.endswith('/'): continue
+            assert {'tests', 'scripts'}.isdisjoint(Path(name).parts), 'Store contains test infrastructure'
             assert 'node_modules' not in name and not name.endswith(('runtime.zip', '.map', '.pyc')), 'Store contains executable dependencies/build metadata'
             audit(name, archive.read(name))
     with zipfile.ZipFile(args.installer) as archive:

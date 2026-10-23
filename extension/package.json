@@ -43,6 +43,14 @@
       "description": "Leave blank to use the bundled engine. Advanced: connect to your own local service.",
       "default": "",
       "required": false
+    },
+    {
+      "name": "serviceTokenPath",
+      "type": "textfield",
+      "title": "Custom Service Token File (Optional)",
+      "description": "Advanced: authentication file for your custom local service. Leave blank to use shared storage. Accepts an absolute path or ~/ path.",
+      "default": "",
+      "required": false
     }
   ],
   "scripts": {
@@ -69,7 +77,7 @@
     "react-test-renderer": "19.3.0",
     "@types/react-test-renderer": "19.1.0"
   },
-  "version": "0.7.0",
+  "version": "0.7.1",
   "categories": [
     "Productivity"
   ],

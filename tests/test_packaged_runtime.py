@@ -12,7 +12,7 @@ import numpy as np
 from PIL import Image
 import pytest
 from reportlab.pdfgen import canvas
-from fastapi.testclient import TestClient
+from authenticated_client import TestClient
 from test_store import FakeEngine
 from tinysearch.config import Config
 from tinysearch.runtime import initial_config

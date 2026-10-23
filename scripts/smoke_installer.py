@@ -15,6 +15,11 @@ import urllib.error
 import urllib.request
 
 
+class NoRedirects(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise urllib.error.HTTPError(req.full_url, code, msg, headers, fp)
+
+
 FIXTURES = r'''
 from pathlib import Path
 import sys
@@ -110,6 +115,7 @@ for name, entry in MANIFEST['processor']['files'].items():
                         str(storage / 'models/embeddinggemma-2-coreml-a4c2764a75bd')], check=True, env=env)
     base = f'http://127.0.0.1:{args.port}'
     process = None
+    local_http = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirects())
     def owned_listener():
         if process is None or process.poll() is not None: return False
         result = subprocess.run(['/usr/sbin/lsof', '-n', '-P', '-iTCP:' + str(args.port), '-sTCP:LISTEN', '-t'],
@@ -118,8 +124,10 @@ for name, entry in MANIFEST['processor']['files'].items():
     def request(endpoint, body=None):
         if not owned_listener(): raise ConnectionError('The test does not own this listener; no API request will be sent')
         data = json.dumps(body).encode() if body is not None else None
-        req = urllib.request.Request(base + '/v1/' + endpoint, data=data, headers={'Content-Type': 'application/json'})
-        with urllib.request.urlopen(req, timeout=180) as response: return json.load(response)
+        token = (storage / 'auth-token').read_text().strip()
+        req = urllib.request.Request(base + '/v1/' + endpoint, data=data,
+            headers={'Content-Type': 'application/json', 'X-Semantic-Search-Token': token})
+        with local_http.open(req, timeout=180) as response: return json.load(response)
     def settle():
         deadline = time.monotonic() + 300
         while time.monotonic() < deadline:
