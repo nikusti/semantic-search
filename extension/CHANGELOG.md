@@ -1,5 +1,11 @@
 # Semantic Search Changelog
 
+## [0.7.2] - Unreleased
+
+- Serialize Core ML preparation across foreground launches and model setup so repeated openings share one preparation after a macOS or native bridge update.
+- Explain when Core ML is being prepared for the current macOS version and when another launch is already preparing it.
+- Preserve existing model weights, indexes and settings; keep scheduled launcher checks from running foreground Core ML startup preparation.
+
 ## [0.7.1] - 2026-10-23
 
 - Authenticate local engine requests with a persistent installation token and retain compatibility with both launchers.

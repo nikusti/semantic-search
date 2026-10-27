@@ -39,6 +39,8 @@ Allow the launcher to access the folders you select if macOS asks. Keep enough f
 
 ## Updating
 
+After a macOS update, Core ML may need several minutes to prepare its downloaded model for the new system build. This is a local operation and reuses the existing model weights and index. Version 0.7.2 (in development) coordinates repeated openings so one preparation runs while other commands wait, and explains that state in the launcher.
+
 Install the newer extension package using the same launcher workflow. Your models and indexes stay in the shared Semantic Search folder. Version 0.5.0 and newer stop an idle packaged engine safely before updating and restore it if the replacement fails. Cancel indexing or wait for it to finish before updating. Engines older than 0.5.0 require a one-time restart of your Mac; your models and indexes are preserved.
 
 The first update after upgrading to 0.6.2 learns skip reasons and thumbnail metadata. This pass can take longer; subsequent checks reuse that information. To enable scheduled updates, turn on **Update the index in the background** in Manage Library and save. Automatic updates are off by default; new settings use a one-hour interval and require external power. Choose **Activate Background Checks** in Actions once after reinstalling or in a second launcher. See [automatic updates](USAGE.md#automatic-updates).

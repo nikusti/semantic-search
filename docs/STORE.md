@@ -57,6 +57,10 @@ The source repository remains `nikusti/semantic-search`. The generated Store fol
 
 Authenticated library requests require the matching 0.7.1 companion. Independent source reviews, native Raycast verification and installer smoke tests were completed, and the maintainer approved publication. Future revisions must validate the companion, both launcher clients and generated Store source, undergo independent review and receive maintainer approval before publication or PR changes.
 
+## Development changes awaiting a future Store revision
+
+Version 0.7.2 is in development in this source repository and has been validated locally in Tinycast. It serializes Core ML preparation and explains the first startup after a macOS or engine update. The current Store PR and its published companion stay pinned to 0.7.1. These changes must wait for a separately validated 0.7.2 companion release and an explicitly approved future PR update; existing 0.7.1 assets must remain unchanged.
+
 ## Build the two packages
 
 The same engine payload and manifest must be used by every package. Build/sign the runtime once before building the installer, ZIP and Store package. Do not rebuild or re-sign the payload after generating the Store manifest. The signer reuses an already sealed payload; changing signing identities requires a fresh runtime build.

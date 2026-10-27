@@ -172,7 +172,7 @@ test("an installed runtime is reused without unpacking or needing the archive", 
     await mkdir(join(runtime, "python/bin"), { recursive: true });
     await writeFile(
       join(runtime, "python/bin/python3.12"),
-      "#!/bin/sh\nexit 0\n",
+      '#!/bin/sh\nprintf \'{"needed":false,"waiting":false,"models":[]}\\n\'\n',
     );
     await chmod(join(runtime, "python/bin/python3.12"), 0o755);
     await writeFile(join(runtime, "installed.json"), JSON.stringify(manifest));
@@ -200,7 +200,7 @@ test("an installed runtime prepares its local startup cache once and preserves u
     await writeFile(join(runtime, "installed.json"), JSON.stringify(manifest));
     await writeFile(
       executable,
-      `#!${process.execPath}\nrequire('node:fs').appendFileSync(${JSON.stringify(log)},JSON.stringify(process.argv.slice(2))+'\\n');\n`,
+      `#!${process.execPath}\nrequire('node:fs').appendFileSync(${JSON.stringify(log)},JSON.stringify(process.argv.slice(2))+'\\n');if(process.argv.includes('--status'))console.log(JSON.stringify({needed:false,waiting:false,models:[]}));\n`,
     );
     await chmod(executable, 0o755);
     for (let i = 0; i < 2; i++)
@@ -716,3 +716,215 @@ test("canceling a Tinycast engine request terminates curl and removes private te
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });
+
+async function startupFixture(
+  storage: string,
+  fixture: { status: string; probeError?: string; preparationError?: string },
+) {
+  const runtime = join(storage, "runtime", manifest.version);
+  const executable = join(runtime, "python/bin/python3.12");
+  const log = join(storage, "startup-calls.jsonl");
+  await mkdir(join(runtime, "python/bin"), { recursive: true });
+  await mkdir(join(storage, "data"));
+  await mkdir(join(storage, "models"));
+  await writeFile(join(storage, "data/index.sqlite3"), "preserve index");
+  await writeFile(join(storage, "models/weights"), "preserve model");
+  await writeFile(join(runtime, "installed.json"), JSON.stringify(manifest));
+  await writeFile(join(runtime, ".startup-cache-ready"), "1");
+  await writeFile(
+    executable,
+    `#!${process.execPath}\nconst fs=require('node:fs');const args=process.argv.slice(2);fs.appendFileSync(${JSON.stringify(log)},JSON.stringify(args)+'\\n');const fixture=${JSON.stringify(fixture)};if(args.includes('--status')){if(fixture.probeError){console.error(fixture.probeError);process.exit(1);}process.stdout.write(fixture.status);}else if(fixture.preparationError){console.error(fixture.preparationError);process.exit(1);}\n`,
+  );
+  await chmod(executable, 0o755);
+  return {
+    runtime,
+    calls: async () =>
+      (await readFile(log, "utf8"))
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as string[]),
+    preserved: async () => {
+      assert.equal(
+        await readFile(join(storage, "data/index.sqlite3"), "utf8"),
+        "preserve index",
+      );
+      assert.equal(
+        await readFile(join(storage, "models/weights"), "utf8"),
+        "preserve model",
+      );
+    },
+  };
+}
+
+const startupStatus = (needed: boolean, waiting: boolean, absent = false) =>
+  JSON.stringify({
+    needed,
+    waiting,
+    models: absent
+      ? []
+      : [{ id: "coreml-experimental", group: "text", needed, waiting }],
+  });
+
+for (const absent of [false, true]) {
+  test(`cached or absent Core ML assets only perform the quick startup check (absent=${absent})`, async () => {
+    const storage = await mkdtemp(join(tmpdir(), "semantic-coreml-ready-"));
+    try {
+      const fixture = await startupFixture(storage, {
+        status: startupStatus(false, false, absent),
+      });
+      const progress: string[] = [];
+      assert.equal(
+        await installRuntime(
+          {
+            assets: "/unneeded",
+            storage,
+            progress: (message) => progress.push(message),
+          },
+          manifest,
+        ),
+        fixture.runtime,
+      );
+      const calls = await fixture.calls();
+      assert.equal(calls.length, 1);
+      assert.deepEqual(calls[0], [
+        "-I",
+        "-B",
+        "-m",
+        "tinysearch.coreml_assets",
+        "--storage",
+        storage,
+        "--status",
+      ]);
+      assert.deepEqual(progress, ["Checking local model startup…"]);
+      await fixture.preserved();
+    } finally {
+      await rm(storage, { recursive: true, force: true });
+    }
+  });
+}
+
+for (const [needed, waiting] of [
+  [true, false],
+  [false, true],
+  [true, true],
+]) {
+  test(`Core ML startup explains expensive preparation or another preparer (needed=${needed}, waiting=${waiting})`, async () => {
+    const storage = await mkdtemp(join(tmpdir(), "semantic-coreml-preparing-"));
+    try {
+      const fixture = await startupFixture(storage, {
+        status: startupStatus(needed, waiting),
+      });
+      const progress: string[] = [];
+      await installRuntime(
+        {
+          assets: "/unneeded",
+          storage,
+          progress: (message) => progress.push(message),
+        },
+        manifest,
+      );
+      const calls = await fixture.calls();
+      assert.equal(calls.length, 2);
+      assert.ok(calls[0].includes("--status"));
+      assert.deepEqual(calls[1], [
+        "-I",
+        "-B",
+        "-m",
+        "tinysearch.coreml_assets",
+        "--storage",
+        storage,
+      ]);
+      assert.match(
+        progress[1],
+        waiting
+          ? /already running.*Waiting.*several minutes/
+          : /Preparing Core ML.*macOS or engine update.*several minutes/,
+      );
+      assert.equal(progress.at(-1), "Local models are ready…");
+      await fixture.preserved();
+    } finally {
+      await rm(storage, { recursive: true, force: true });
+    }
+  });
+}
+
+for (const response of [
+  "not json",
+  "null",
+  "{}",
+  '{"needed":"false","waiting":false,"models":[]}',
+  '{"needed":false,"waiting":false,"models":[null]}',
+  '{"needed":false,"waiting":false,"models":[{"id":"coreml","group":"text","needed":true,"waiting":false}]}',
+]) {
+  test(`invalid Core ML startup readiness never skips preparation silently: ${response}`, async () => {
+    const storage = await mkdtemp(
+      join(tmpdir(), "semantic-coreml-bad-status-"),
+    );
+    try {
+      const fixture = await startupFixture(storage, { status: response });
+      await assert.rejects(
+        installRuntime({ assets: "/unneeded", storage }, manifest),
+        /Could not check Core ML startup readiness/,
+      );
+      assert.equal((await fixture.calls()).length, 1);
+      await fixture.preserved();
+    } finally {
+      await rm(storage, { recursive: true, force: true });
+    }
+  });
+}
+
+test("a failed Core ML readiness probe stops startup with a matching-engine instruction", async () => {
+  const storage = await mkdtemp(
+    join(tmpdir(), "semantic-coreml-status-error-"),
+  );
+  try {
+    const fixture = await startupFixture(storage, {
+      status: "",
+      probeError: "--status is not supported",
+    });
+    await assert.rejects(
+      installRuntime({ assets: "/unneeded", storage }, manifest),
+      /Reinstall the matching engine/,
+    );
+    assert.equal((await fixture.calls()).length, 1);
+    await fixture.preserved();
+  } finally {
+    await rm(storage, { recursive: true, force: true });
+  }
+});
+
+for (const timedOut of [false, true]) {
+  test(`Core ML preparation failure keeps data and offers a clear retry (timeout=${timedOut})`, async () => {
+    const storage = await mkdtemp(
+      join(tmpdir(), "semantic-coreml-preparation-error-"),
+    );
+    try {
+      const fixture = await startupFixture(storage, {
+        status: startupStatus(true, false),
+        preparationError: timedOut
+          ? "subprocess.TimeoutExpired: helper timed out after 600 seconds"
+          : "Core ML helper failed",
+      });
+      const progress: string[] = [];
+      await assert.rejects(
+        installRuntime(
+          {
+            assets: "/unneeded",
+            storage,
+            progress: (message) => progress.push(message),
+          },
+          manifest,
+        ),
+        timedOut
+          ? /did not finish in time.*reopen Search.*preserved/
+          : /preparation failed.*retry.*preserved/,
+      );
+      assert.equal((await fixture.calls()).length, 2);
+      assert.ok(!progress.includes("Local models are ready…"));
+      await fixture.preserved();
+    } finally {
+      await rm(storage, { recursive: true, force: true });
+    }
+  });
+}
