@@ -26,6 +26,11 @@ def test_store_export_keeps_shared_tests_and_host_support_outside_package(tmp_pa
     (source / 'tests/keep.test.ts').write_text('development regression')
     (source / 'scripts').mkdir()
     (source / 'scripts/test.mjs').write_text('development runner')
+    (source / 'metadata').mkdir()
+    (source / 'metadata/shared.png').write_bytes(b'shared screenshot fixture')
+    store_metadata = project / 'packaging/store-metadata'
+    store_metadata.mkdir(parents=True)
+    (store_metadata / 'semantic-file-search-1.png').write_bytes(b'Store screenshot fixture')
     original = (source / 'src/launcher-probe.ts').read_text()
     original_launcher = (source / 'src/launcher.ts').read_text()
     original_changelog = (source / 'CHANGELOG.md').read_text()
@@ -55,6 +60,9 @@ def test_store_export_keeps_shared_tests_and_host_support_outside_package(tmp_pa
     assert 'tests' not in json.loads((output / 'tsconfig.json').read_text())['include']
     assert not (output / 'tests').exists() and not (output / 'scripts').exists()
     assert (source / 'tests/keep.test.ts').exists()
+    assert (source / 'metadata/shared.png').read_bytes() == b'shared screenshot fixture'
+    assert sorted(p.name for p in (output / 'metadata').iterdir()) == ['semantic-file-search-1.png']
+    assert (output / 'metadata/semantic-file-search-1.png').read_bytes() == b'Store screenshot fixture'
     assert (source / 'src/launcher-probe.ts').read_text() == original
     assert (source / 'src/launcher.ts').read_text() == original_launcher
     assert 'Run this command from the Semantic Search extension in Tinycast or Raycast and try again.' in original_launcher

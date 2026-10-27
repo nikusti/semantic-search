@@ -7,6 +7,11 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 FORBIDDEN_FOLDERS = {"models", "data", "artifacts", "fixtures", "node_modules", ".venv", "__pycache__", ".build"}
 PRIVATE_SUFFIXES = {".sqlite3", ".db", ".npy", ".npz", ".safetensors", ".gguf", ".mp4", ".mov", ".mp3", ".wav", ".heic", ".jpg", ".jpeg", ".zip", ".rayext"}
+# Native Capture Window screenshots are kept intact, including the background.
+STORE_CAPTURE_ASSETS = {
+    "packaging/store-metadata/semantic-file-search-1.png",
+    "packaging/store-metadata/semantic-file-search-2.png",
+}
 # Only the icon and individually reviewed screenshots are public binary assets.
 PUBLIC_PNG_ASSETS = {
     "extension/assets/icon.png",
@@ -18,7 +23,7 @@ PUBLIC_PNG_ASSETS = {
     "extension/metadata/semantic-search-2.png",
     "extension/metadata/semantic-search-3.png",
     "extension/metadata/semantic-search-4.png",
-}
+} | STORE_CAPTURE_ASSETS
 PATTERNS = {
     "personal absolute path": re.compile(r"/(?:Users|home)/[A-Za-z0-9_.-]+/"),
     "GitHub credential": re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b"),
@@ -45,7 +50,8 @@ def main():
         if path.name in {"config.toml", "auth-token"} or path.name.startswith((".env", ".auth-token-")):
             failures.append(f"{name}: local settings")
         content = subprocess.run(["git", "show", f":{name}"], cwd=ROOT, capture_output=True, check=True).stdout
-        if len(content) > 1024 * 1024:
+        size_limit = (4 if name in STORE_CAPTURE_ASSETS else 1) * 1024 * 1024
+        if len(content) > size_limit:
             failures.append(f"{name}: unexpectedly large source file")
         try:
             text = content.decode("utf-8")

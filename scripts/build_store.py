@@ -107,7 +107,7 @@ Source, release notices and matching native dependency sources: [Semantic Search
 - Offer optional scheduled library updates with power conditions and pause/resume.
 - Connect to a separately installed local engine with authenticated library requests; files and queries stay on the Mac.
 ''')
-    screenshots = ROOT / 'extension/metadata'
+    screenshots = ROOT / 'packaging/store-metadata'
     if screenshots.is_dir(): shutil.copytree(screenshots, output / 'metadata')
     forbidden = {'runtime.zip', 'node_modules', '.build', 'tests', 'scripts'}
     for path in output.rglob('*'):
