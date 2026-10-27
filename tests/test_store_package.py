@@ -27,6 +27,7 @@ def test_store_export_keeps_shared_tests_and_host_support_outside_package(tmp_pa
     (source / 'scripts').mkdir()
     (source / 'scripts/test.mjs').write_text('development runner')
     original = (source / 'src/launcher-probe.ts').read_text()
+    original_launcher = (source / 'src/launcher.ts').read_text()
     original_changelog = (source / 'CHANGELOG.md').read_text()
     monkeypatch.setattr(builder, 'ROOT', project)
     installs = []
@@ -55,12 +56,15 @@ def test_store_export_keeps_shared_tests_and_host_support_outside_package(tmp_pa
     assert not (output / 'tests').exists() and not (output / 'scripts').exists()
     assert (source / 'tests/keep.test.ts').exists()
     assert (source / 'src/launcher-probe.ts').read_text() == original
+    assert (source / 'src/launcher.ts').read_text() == original_launcher
+    assert 'Run this command from the Semantic Search extension in Tinycast or Raycast and try again.' in original_launcher
     assert (source / 'CHANGELOG.md').read_text() == original_changelog
     store_changelog = (output / 'CHANGELOG.md').read_text()
     assert store_changelog.startswith('# Semantic File Search Changelog\n')
     assert store_changelog.count('\n## ') == 1
     assert '## [Initial Version] - {PR_MERGE_DATE}' in store_changelog
     assert 'Run this command from Raycast' in (output / 'src/launcher-probe.ts').read_text()
+    assert 'Run this command from the Semantic File Search extension in Raycast and try again.' in (output / 'src/launcher.ts').read_text()
     assert 'while Raycast is running' in (output / 'src/automatic-settings.tsx').read_text()
     assert 'Open Manage Library, add folders' in (output / 'src/semantic-search.tsx').read_text()
     assert installs

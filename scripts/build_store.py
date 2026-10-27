@@ -16,7 +16,8 @@ def store_sources(source, output):
     """Keep host compatibility in shared code; localize only Store-facing text."""
     shutil.copytree(source / 'src', output / 'src')
     replacements = {
-        'launcher.ts': [('in Tinycast or Raycast', 'in Raycast')],
+        'launcher.ts': [('Semantic Search extension in Tinycast or Raycast',
+                         f'{STORE_TITLE} extension in Raycast')],
         'launcher-probe.ts': [('from Tinycast or Raycast', 'from Raycast')],
         'automatic-settings.tsx': [('while Tinycast or Raycast is running', 'while Raycast is running')],
         'semantic-search.tsx': [('Open Model Settings, add folders', 'Open Manage Library, add folders')],
