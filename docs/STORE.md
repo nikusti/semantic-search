@@ -59,7 +59,7 @@ Authenticated library requests require the matching 0.7.1 companion. Independent
 
 ## Development changes awaiting a future Store revision
 
-Version 0.7.2 is in development in this source repository and has been validated locally in Tinycast. It serializes Core ML preparation and explains the first startup after a macOS or engine update. The current Store PR and its published companion stay pinned to 0.7.1. These changes must wait for a separately validated 0.7.2 companion release and an explicitly approved future PR update; existing 0.7.1 assets must remain unchanged.
+Version 0.7.2 serializes Core ML preparation and explains the first startup after a macOS or engine update. The shared release includes a matching companion installer and has been validated locally in Tinycast. The current Store PR and its referenced companion stay pinned to 0.7.1. Updating that PR requires separate Raycast validation, independent review and explicit maintainer approval; existing 0.7.1 assets remain unchanged.
 
 ## Build the two packages
 

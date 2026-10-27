@@ -2,11 +2,11 @@
 
 You need an Apple silicon Mac running macOS 26 or newer. No terminal, Homebrew, Python or Node.js installation is needed for the ready-to-use package.
 
-Version **0.7.1** authenticates local library requests with an installation token and fixes settings synchronization. Update the extension and companion together. Optional scheduled updates include an external-power condition and pause/resume. Apple Photos, cumulative search folders and photo-first visual ranking are included. Existing folders, models and indexes are preserved on update.
+Version **0.7.2** coordinates Core ML preparation after macOS or engine updates and explains when startup needs several minutes. It includes authenticated local requests and settings synchronization fixes from 0.7.1. Update the extension and companion together. Optional scheduled updates include an external-power condition and pause/resume. Apple Photos, cumulative search folders and photo-first visual ranking are included. Existing folders, models and indexes are preserved on update.
 
 ## Tinycast
 
-1. Download `semantic-search-v0.7.1.zip` from the GitHub release and extract it.
+1. Download `semantic-search-v0.7.2.zip` from the GitHub release and extract it.
 2. In Tinycast, open **Settings → Extensions → Install → Add from folder**.
 3. Select the extracted **Semantic Search** folder, containing `package.json`.
 4. Open **Semantic Search Model Settings**. The first launch prepares the bundled engine automatically.
@@ -18,7 +18,7 @@ Leave **Custom Local Service** blank. The extension starts its own engine when n
 
 ## Raycast
 
-1. Download and extract the same `semantic-search-v0.7.1.zip`.
+1. Download and extract the same `semantic-search-v0.7.2.zip`.
 2. Move the extracted **Semantic Search** folder to a permanent location.
 3. Run **Import Extension** in Raycast and choose that folder.
 4. Raycast may show generic developer instructions to run npm. This package is already built, so skip those instructions.
@@ -39,7 +39,7 @@ Allow the launcher to access the folders you select if macOS asks. Keep enough f
 
 ## Updating
 
-After a macOS update, Core ML may need several minutes to prepare its downloaded model for the new system build. This is a local operation and reuses the existing model weights and index. Version 0.7.2 (in development) coordinates repeated openings so one preparation runs while other commands wait, and explains that state in the launcher.
+After a macOS update, Core ML may need several minutes to prepare its downloaded model for the new system build. This is a local operation and reuses the existing model weights and index. Version 0.7.2 coordinates repeated openings so one preparation runs while other commands wait, and explains that state in the launcher.
 
 Install the newer extension package using the same launcher workflow. Your models and indexes stay in the shared Semantic Search folder. Version 0.5.0 and newer stop an idle packaged engine safely before updating and restore it if the replacement fails. Cancel indexing or wait for it to finish before updating. Engines older than 0.5.0 require a one-time restart of your Mac; your models and indexes are preserved.
 
@@ -47,6 +47,6 @@ The first update after upgrading to 0.6.2 learns skip reasons and thumbnail meta
 
 ## Optional companion installer
 
-The release also includes `semantic-search-engine-v0.7.1-unsigned.zip`. Extract it, open **Semantic Search Engine Installer**, and click **Install**. It installs the same engine as the ready-to-use ZIP, with Python and libraries included. Models still download from the extension. The companion installer is optional for the bundled ZIP and prepares the small Store package; no Store listing is available yet.
+The release also includes `semantic-search-engine-v0.7.2-unsigned.zip`. Extract it, open **Semantic Search Engine Installer**, and click **Install**. It installs the same engine as the ready-to-use ZIP, with Python and libraries included. Models still download from the extension. The companion installer is optional for the bundled ZIP and prepares the small Store package; no Store listing is available yet.
 
 This installer has no Apple Developer ID signature or notarization. macOS may block the downloaded app until you explicitly approve opening it. See [Apple's opening-app guidance](https://support.apple.com/en-us/102445). Signing is not required to submit the extension for Raycast review; acceptance of the companion design is decided during that review. Use the bundled extension ZIP if you prefer its existing installation workflow.
